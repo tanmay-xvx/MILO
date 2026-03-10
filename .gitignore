@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+
+# C++ / Build
+build/
+bin/
+*.o
+*.wasm
+
+# Secret Keys
+.env
