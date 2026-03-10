@@ -11,3 +11,5 @@ bin/
 
 # Secret Keys
 .env
+
+target/
