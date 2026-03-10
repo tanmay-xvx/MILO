@@ -13,3 +13,22 @@ to interact with any device using Just-In-Time compiled WebAssembly (Wasm).
 - **Runtime:** Wasm3 (C++)
 - **Transport:** LIAL-Link (CBOR over UDP/BLE)
 - **Compiler:** LLVM / Clang (Target: wasm32-wasi)
+
+## 🛠️ Development & Simulation
+
+This project uses **WebAssembly (WASM)** and **WASI** to provide a hardware-agnostic abstraction layer. To simulate the driver execution on a local machine:
+
+### Prerequisites
+- **Rust Toolchain**: `rustup target add wasm32-wasip1`
+- **Wasmtime Runtime**: [Install here](https://wasmtime.dev/)
+
+### Build the Driver
+Compile the Rust source into a WASI-compliant WebAssembly module:
+```bash
+cargo build --target wasm32-wasip1
+```
+## Run the Simulation
+ - Execute the compiled module using the wasmtime runtime to simulate the LIAL Receiver:
+```bash
+wasmtime target/wasm32-wasip1/debug/lial-pulse-driver.wasm
+```
