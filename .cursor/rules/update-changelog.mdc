@@ -1,42 +1,49 @@
 ---
-description: "Update the project changelog. Use when the user says 'update changelog', 'update the changelog', or 'log changes'."
-globs: docs/changelog.md
+description: "Update project docs. Use when the user says 'update docs', 'update changelog', 'log changes', 'finalize week', or 'week done'."
+globs: docs/**/*.md
 alwaysApply: false
 ---
 
-# Update Changelog
+# Update Docs
 
-When asked to update the changelog, follow this procedure:
+## Determine the current week
 
-## 1. Gather the diff
+Run `git branch --show-current` to get the branch name (e.g., `week1`, `week2`).
+Use that as `weekN` for all paths below. If the branch is not `weekN`-shaped, fall back to the most recent `docs/week*/` directory.
 
-- Read `docs/changelog.md` to find the last recorded commit hash or date.
-- Run `git log --oneline <last_hash>..HEAD` to get new commits since then.
-- Run `git diff <last_hash> --stat` for committed changes.
+## When asked to "update docs" or "update changelog"
+
+### 1. Gather the diff
+
+- Read `docs/weekN/changelog.md` to find the last recorded entry.
+- Run `git log --oneline` for new commits since the last entry.
 - Run `git status --short` and `git diff HEAD --stat` for uncommitted changes.
 
-If no commit hash is recorded, diff against the most recent `## [...]` entry's date.
+### 2. Update three files
 
-## 2. Categorize changes
+**`docs/weekN/changelog.md`** (week-scoped):
+- Insert a new dated section at the top (below the header).
+- Categorize changes under: **Added**, **Changed**, **Fixed**, **Removed**, **Milestone** (omit empty sections).
+- Each bullet: **bold label** -- description. Reference specific files.
+- Never delete previous entries.
 
-Group changes under these headings (omit empty sections):
+**`docs/weekN/currentStatus.md`** (living status):
+- Move newly completed items from "In Progress" / "Next Up" to "Completed".
+- Update "In Progress" with whatever is currently being worked on.
+- Update "Blocked" if anything is stuck.
+- Update "Next Up" with the next tasks from `docs/weekN/actionPlan.md`.
 
-- **Added** — New files, features, crates, or capabilities.
-- **Changed** — Modifications to existing behavior, paths, or APIs.
-- **Fixed** — Bug fixes, compilation errors, compatibility issues.
-- **Removed** — Deleted files or deprecated features.
-- **Milestone** — One-line summary if a major milestone was reached.
+**`docs/changelog.md`** (project-wide):
+- Append the same changelog entry to the project-wide file.
+- Follow the existing format (Keep a Changelog style with `---` separators).
 
-## 3. Write the entry
+## When asked to "finalize week" or "week done"
 
-- Insert a new `## [Unreleased]` section (or dated section if committing) at the top of the changelog, below the header.
-- If an existing `[Unreleased]` section exists, merge new items into it.
-- Include the commit hash range in the section heading when applicable.
-- Each bullet should be a single concise line: **bold label** followed by a dash and description.
-- Reference specific files/functions changed.
-
-## 4. Format rules
-
-- Use the existing style in `docs/changelog.md` as the template.
-- Separate sections with `---`.
-- Never delete or modify previous changelog entries.
+1. Update all three files above one final time.
+2. Create `docs/weekN/finalState.md` with:
+   - **Summary:** One paragraph on what the week accomplished.
+   - **Completed:** Full list of everything done this week.
+   - **Carries Over:** Any unfinished items that move to the next week.
+   - **Component State:** Current state of each component (Receiver, Host, Link, Examples).
+   - **Branch:** Note the branch name and final commit hash (`git rev-parse HEAD`).
+3. Tell the user the week is finalized and suggest: "Merge `weekN` into `dev`, then `git checkout -b weekN+1` to start the next week."

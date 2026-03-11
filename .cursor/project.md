@@ -135,22 +135,6 @@ For any control loop with \(N > 1\) iterations, LIAL dominates because \(t_{\tex
 - **Hardware:** ESP32-C3/S3, STM32 (ARM Cortex-M), or Raspberry Pi.
 - **Crates:** `wasmi` (with `default-features = false`), `embedded-hal`.
 
-## 9. 3-Week Action Plan
+## 9. Development Tracking
 
-### Week 1: Foundations & The "Alphabet"
-
-- Build a Rust Receiver using `wasmi`.
-- Manually link "Atomic Letters" (`gpio_set`, `delay_ms`).
-- Successfully execute a local `.wasm` payload via `fs::read`.
-
-### Week 2: Intelligence & The "Manifest"
-
-- Build the Python Host orchestration.
-- Implement the String -> WASM JIT pipeline.
-- Automate LLM prompting with hardware context.
-
-### Week 3: Connectivity & Safety
-
-- Implement LIAL-Link over UDP.
-- Add Instruction Metering (Gas) to prevent device hangs.
-- Full "User Prompt to Silicon Action" loop.
+Weekly action plans, changelogs, and status are maintained in `docs/weekN/`. See `docs/week1/actionPlan.md` for the current plan.
