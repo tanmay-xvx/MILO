@@ -1,0 +1,42 @@
+---
+description: "Update the project changelog. Use when the user says 'update changelog', 'update the changelog', or 'log changes'."
+globs: docs/changelog.md
+alwaysApply: false
+---
+
+# Update Changelog
+
+When asked to update the changelog, follow this procedure:
+
+## 1. Gather the diff
+
+- Read `docs/changelog.md` to find the last recorded commit hash or date.
+- Run `git log --oneline <last_hash>..HEAD` to get new commits since then.
+- Run `git diff <last_hash> --stat` for committed changes.
+- Run `git status --short` and `git diff HEAD --stat` for uncommitted changes.
+
+If no commit hash is recorded, diff against the most recent `## [...]` entry's date.
+
+## 2. Categorize changes
+
+Group changes under these headings (omit empty sections):
+
+- **Added** — New files, features, crates, or capabilities.
+- **Changed** — Modifications to existing behavior, paths, or APIs.
+- **Fixed** — Bug fixes, compilation errors, compatibility issues.
+- **Removed** — Deleted files or deprecated features.
+- **Milestone** — One-line summary if a major milestone was reached.
+
+## 3. Write the entry
+
+- Insert a new `## [Unreleased]` section (or dated section if committing) at the top of the changelog, below the header.
+- If an existing `[Unreleased]` section exists, merge new items into it.
+- Include the commit hash range in the section heading when applicable.
+- Each bullet should be a single concise line: **bold label** followed by a dash and description.
+- Reference specific files/functions changed.
+
+## 4. Format rules
+
+- Use the existing style in `docs/changelog.md` as the template.
+- Separate sections with `---`.
+- Never delete or modify previous changelog entries.

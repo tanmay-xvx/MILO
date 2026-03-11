@@ -1,0 +1,30 @@
+---
+description: LIAL project architecture, conventions, and safety constraints
+alwaysApply: true
+---
+
+# LIAL Project Context
+
+This is the LIAL (LLM IoT Abstraction Layer) project — a secure, high-performance system for LLM agents to interact with physical hardware via JIT-compiled WebAssembly.
+
+Refer to `.cursor/project.md` for the full specification.
+
+## Architecture (3 Components)
+
+1. **LIAL Host** (Python 3.10+ / LLVM) — Orchestrator that manages LLM interaction and compiles C/Rust strings to `wasm32-unknown-unknown` binaries.
+2. **LIAL-Link** — Binary-first stateless protocol (CBOR over UDP/BLE/Serial) with OpCodes `0x01` (Discovery), `0x02` (Bytecode Push), `0x03` (Feedback).
+3. **LIAL Receiver** (Rust `no_std` / `wasmi`) — Execution sandbox on IoT hardware with a System Call Table ("Atomic Alphabet") for GPIO, I2C, SPI, PWM.
+
+## Key Conventions
+
+- Receiver code targets Rust `no_std` with the `wasmi` crate (`default-features = false`).
+- Wasm drivers compile to `wasm32-unknown-unknown` (Rust) or use WASI-SDK (C).
+- The `lial_std` syscall alphabet must stay under 15 functions for portability.
+- LIAL-Link uses CBOR serialization for all frames.
+
+## Safety Constraints (Non-Negotiable)
+
+- **No Direct Pointers:** Wasm modules must never access hardware memory directly.
+- **Platform Agnosticism:** The Host only speaks Wasm — no platform-specific logic.
+- **Memory Isolation:** Bytecode is sandboxed and cannot touch host memory.
+- **Instruction Metering:** All execution must have Gas limits to prevent infinite loops.
