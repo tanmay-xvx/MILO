@@ -1,9 +1,9 @@
-# ESP32-C3 target configuration
-# NOTE: Building for riscv32imc-unknown-none-elf requires nightly + build-std
-# and a patched wasmi that replaces alloc::sync::Arc with Rc for no-atomics targets.
-# See: https://github.com/wasmi-labs/wasmi/issues/738
-
 [target.riscv32imc-unknown-none-elf]
 rustflags = [
     "--cfg", "portable_atomic_unsafe_assume_single_core",
+    "-C", "link-arg=-Tlinkall.x",
 ]
+
+[unstable]
+build-std = ["core", "alloc"]
+build-std-features = ["compiler-builtins-mem"]

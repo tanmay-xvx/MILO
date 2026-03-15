@@ -7,7 +7,6 @@
 ///   0x02 -- Bytecode Push (Host -> Receiver): raw wasm bytes
 ///   0x03 -- Execution Log/Feedback (Receiver -> Host): JSON result
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 
 pub const OP_DISCOVERY: u8 = 0x01;

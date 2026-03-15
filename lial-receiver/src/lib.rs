@@ -148,19 +148,18 @@ impl<H: LialHardware + 'static> LialRuntime<H> {
 
         let lial_log = Func::wrap(
             &mut *store,
-            |mut caller: Caller<'_, HostState<H>>, ptr: u32| {
+            |mut caller: Caller<'_, HostState<H>>, ptr: u32, len: u32| {
                 let memory = match caller.data().memory {
                     Some(m) => m,
                     None => return,
                 };
                 let data = memory.data(&caller);
                 let start = ptr as usize;
-                if start >= data.len() {
+                let end = start + len as usize;
+                if end > data.len() {
                     return;
                 }
-                let slice = &data[start..];
-                let end = slice.iter().position(|&b| b == 0).unwrap_or(slice.len());
-                if let Ok(msg) = core::str::from_utf8(&slice[..end]) {
+                if let Ok(msg) = core::str::from_utf8(&data[start..end]) {
                     let msg_owned = String::from(msg);
                     caller.data_mut().hw.log(&msg_owned);
                     caller.data_mut().logs.push(msg_owned);
@@ -219,5 +218,10 @@ impl<H: LialHardware + 'static> LialRuntime<H> {
         })?;
 
         Ok(self.store.data().logs.clone())
+    }
+
+    /// Consume the runtime and return the hardware backend.
+    pub fn into_hardware(self) -> H {
+        self.store.into_data().hw
     }
 }

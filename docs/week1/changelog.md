@@ -1,6 +1,47 @@
 # Week 1 Changelog
 
-Changes made during Week 1 development on the `week1` branch.
+Changes made during Week 1 development.
+
+---
+
+## ESP32-C3 End-to-End — 2026-03-15
+
+### Added
+
+- **wasmi patches** — Local forks of 4 crates in `patches/` enabling wasmi on `riscv32imc-unknown-none-elf`:
+  - `wasmi`: `Arc`→`Rc`, all `Send+Sync` bounds removed, `portable-atomic` for `AtomicU32`.
+  - `wasmi_core`: `Arc`→`Rc` in `fuel.rs` and `func_type.rs`.
+  - `wasmi_collections`: `Arc<str>`→`Rc<str>` in string interner.
+  - `wasmparser`: `Arc`→`Rc`, `core::sync::atomic`→`portable_atomic`.
+- **`Esp32C3Hal`** — Real hardware implementation: GPIO output via `esp_hal::gpio::Output`, busy-wait delay via `esp_hal::time::Instant`, generic over `embedded_io::Read/Write` for USB Serial JTAG.
+- **Dual-target `main.rs`** — `#[esp_hal::main]` for ESP32-C3, standard `fn main()` for laptop. `#![no_std]` / `#![no_main]` gated behind `esp32c3` feature.
+- **`esp-bootloader-esp-idf`** — `esp_app_desc!()` macro for ESP-IDF bootloader image format.
+- **`blink_led` test driver** — 618-byte wasm binary, 64KB memory, blinks GPIO5 five times.
+- **`serial_push.py`** — Python tool for pushing pre-built wasm over USB serial.
+- **`lial_host.py` rewrite** — Interactive CLI: serial auto-detect, GPT-4o, compile-error retry (2 attempts), progress messages during compile/push/execute.
+- **`lial_compiler.py` rewrite** — Rust body → wasm with `--initial-memory=65536 --max-memory=65536 -z stack-size=4096`.
+- **`.cargo/config.toml`** — `portable_atomic_unsafe_assume_single_core`, `-Tlinkall.x`, `build-std = ["core", "alloc"]`.
+- **`LialRuntime::into_hardware()`** — Returns the `LialHardware` impl so the ESP32 main loop can reuse peripherals.
+
+### Changed
+
+- **`lial_log` signature** — `(ptr: u32)` → `(ptr: u32, len: u32)` across receiver `lib.rs`, compiler template, system prompt, and blink_led example.
+- **`Cargo.toml`** — Added `embedded-io`, `portable-atomic`, `esp-bootloader-esp-idf`. `[patch.crates-io]` for 4 patched crates. `esp-hal` now includes `"unstable"` feature for UsbSerialJtag.
+- **`Esp32C3Hal::log()`** — Changed to no-op to prevent raw text from corrupting the binary LIAL-Link protocol on the serial line. Logs are captured in `HostState.logs` and returned in the JSON result frame.
+
+### Fixed
+
+- **wasmi atomics blocker** — Patched all 4 crates to eliminate `alloc::sync::Arc` and `core::sync::atomic` CAS operations, using `alloc::rc::Rc` and `portable_atomic` instead.
+- **Wasm memory overflow** — Default Rust wasm binaries request 17 pages (1.1MB) of linear memory. Constrained to 1 page (64KB) via linker flags.
+- **Serial protocol corruption** — `log()` was writing plain text to USB serial during wasm execution, breaking LIAL-Link frame parsing on the host side.
+- **Linker script resolution** — ESP32-C3 build needed `-Tlinkall.x` in rustflags (not `-Tlink.x` from riscv-rt which expects `REGION_TEXT`).
+
+### Verified
+
+- ESP32-C3 (revision v0.4), 4MB flash, `riscv32imc-unknown-none-elf`
+- Firmware: 902KB flash footprint (21.8%)
+- Heap: 200KB for wasmi runtime
+- Wasm execution: blink_led driver (5 cycles × 500ms = 5s), result returned as `{"ok":true,"logs":["Blinking LED on GPIO 5"]}`
 
 ---
 
@@ -8,37 +49,21 @@ Changes made during Week 1 development on the `week1` branch.
 
 ### Added
 
-- **`lial-receiver/src/lib.rs`** — Core runtime library with `LialHardware` trait (6 syscalls), `LialRuntime<H>` generic executor, `LialError` enum, `HostState<H>`, gas metering via wasmi fuel.
-- **`lial-receiver/src/mock.rs`** — `LaptopMock` struct implementing all 6 `LialHardware` methods (GPIO print, thread::sleep delay, Instant-based uptime, I2C stub, stderr logging).
-- **`lial-receiver/src/esp32c3.rs`** — `Esp32C3Hal` stub implementing `LialHardware` trait. Structurally complete but blocked on wasmi atomics issue (wasmi-labs/wasmi#738).
-- **`lial-receiver/src/link.rs`** — LIAL-Link v0.1 frame protocol: `[opcode: u8][len: u32 BE][payload]`, OpCodes 0x01 (Discovery), 0x02 (Bytecode Push), 0x03 (Exec Result). `read_frame`/`write_frame` for std byte streams.
-- **`lial-receiver/tests/integration.rs`** — 4 integration tests: happy_path, missing_export, fuel_exhaustion, bad_module. All passing.
-- **`examples/test_drivers/infinite_loop/`** — Wasm fixture for gas/fuel exhaustion testing.
-- **`examples/test_drivers/no_export/`** — Wasm fixture for missing export testing.
-- **`lial-host/lial_host.py`** — Full host orchestrator: `LIALLink` class (subprocess + serial transports), LLM prompter (OpenAI + Anthropic), `extract_rust_code()` for markdown stripping, interactive CLI loop.
-- **`lial-host/requirements.txt`** — openai, anthropic, pyserial.
-- **`lial-receiver/.cargo/config.toml`** — ESP32-C3 target config with `portable_atomic_unsafe_assume_single_core`.
+- **`lial-receiver/src/lib.rs`** — Core library: `LialHardware` trait, `LialRuntime<H>`, `LialError`, `HostState<H>`, gas metering.
+- **`lial-receiver/src/mock.rs`** — `LaptopMock` with GPIO print, `thread::sleep` delay, `Instant` uptime, stderr logging.
+- **`lial-receiver/src/link.rs`** — LIAL-Link v0.1: `Frame`, `read_frame`/`write_frame`, `LinkError`.
+- **`lial-receiver/tests/integration.rs`** — 4 tests: happy_path, missing_export, fuel_exhaustion, bad_module.
+- **Test fixtures** — `infinite_loop`, `no_export`.
+- **Host orchestrator** and **JIT compiler** initial versions.
 
 ### Changed
 
-- **`lial-receiver/src/main.rs`** — Complete rewrite: thin CLI wrapper around `LialRuntime<LaptopMock>`. Supports `--fuel N`, `<wasm_path>`, and `--stdin` (LIAL-Link pipe mode).
-- **`lial-receiver/Cargo.toml`** — Added `std`/`esp32c3` feature flags, `serde_json` dependency, optional `esp-hal`/`esp-alloc` dependencies.
-- **`lial-host/lial_compiler.py`** — Complete rewrite: auto-detects Homebrew LLVM clang + wasm-ld, falls back to Rust cdylib pipeline. New `compile_to_bytes(code, lang)` API. LIAL header and Rust template auto-prepended.
-- **`lial-receiver/src/mock.rs`** — All output via `eprintln!` to keep stdout clean for binary frame protocol.
+- **`main.rs`** — Rewritten as CLI wrapper: `--fuel N`, `<wasm_path>`, `--stdin`.
+- **`mock.rs`** — All output via `eprintln!` to keep stdout clean for binary protocol.
 
 ### Removed
 
-- **`lial-receiver/src/lial_std.rs`** — Dead code with unresolvable `embedded_hal` import, replaced by `LialHardware` trait.
-
-### Infrastructure
-
-- Installed `riscv32imc-unknown-none-elf` Rust target.
-- Installed `espup` v0.16.0, `espflash` v4.3.0.
-- Installed Python packages: openai, anthropic, pyserial.
-
-### Known Blocker
-
-- **wasmi no-atomics:** `wasmi 1.0.9` uses `alloc::sync::Arc` which is unavailable on `riscv32imc-unknown-none-elf` (no hardware atomics). This prevents compiling the receiver for ESP32-C3. Tracked upstream: wasmi-labs/wasmi#738. Resolution: patch wasmi to use `Rc`, or wait for upstream fix.
+- **`lial_std.rs`** — Dead code replaced by `LialHardware` trait.
 
 ---
 
@@ -46,17 +71,10 @@ Changes made during Week 1 development on the `week1` branch.
 
 ### Fixed
 
-- **wasmi API mismatch in receiver** -- Replaced `linker.instantiate()` + `.start()` with `linker.instantiate_and_start()` to match `wasmi` 1.0.9 API.
-- **mock_driver.wasm wrong target** -- Replaced 1.4 MB `wasm32-wasip1` binary with a 600-byte `wasm32-unknown-unknown` cdylib build.
-- **Rust 2024 edition compatibility** -- Updated `examples/mock_driver/src/lib.rs` to use `unsafe extern "C"` and `#[unsafe(no_mangle)]`.
-
-### Added
-
-- `examples/mock_driver/Cargo.toml` -- cdylib crate for clean wasm builds.
-- `.cursor/project.md` -- Full manifesto v1.0 with LIAL Stack, Alphabet table, security model.
-- `.cursor/rules/lial-project.mdc` -- Cursor rule for project context.
-- `docs/changelog.md` -- Project-wide changelog.
+- wasmi API mismatch (`instantiate_and_start()`).
+- mock_driver.wasm wrong target (1.4MB wasip1 → 600B wasm32-unknown-unknown).
+- Rust 2024 edition compatibility.
 
 ### Milestone
 
-First successful end-to-end "Handshake": Receiver loads a 600-byte wasm module, links Alphabet syscalls (`gpio_set`, `delay_ms`), and executes a 3-cycle GPIO blink loop on a laptop.
+First successful end-to-end laptop handshake: 600-byte wasm → wasmi → 3-cycle GPIO blink.

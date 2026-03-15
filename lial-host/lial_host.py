@@ -1,222 +1,198 @@
+#!/usr/bin/env python3
 """
-LIAL Host Orchestrator -- Connects to a LIAL Receiver (via serial or subprocess),
-prompts an LLM to generate driver code, compiles it to wasm, and pushes it.
+LIAL Host -- Interactive orchestrator that connects to an ESP32 running the
+LIAL Receiver, asks an LLM to write firmware from natural language, compiles
+it to wasm, pushes it over USB-serial, and reports the result.
 
 Usage:
-    python lial_host.py --subprocess "cargo run --manifest-path ../lial-receiver/Cargo.toml -- --stdin"
-    python lial_host.py --port /dev/tty.usbserial-XXX
-
-Environment:
-    LIAL_LLM_PROVIDER  = "openai" (default) | "anthropic"
-    OPENAI_API_KEY     = your key
-    ANTHROPIC_API_KEY  = your key
+    export OPENAI_API_KEY=sk-...
+    python lial_host.py                          # auto-detect serial port
+    python lial_host.py --port /dev/cu.usbmodem101
 """
 
 import argparse
+import glob
 import json
 import os
 import re
 import struct
-import subprocess
 import sys
 import time
 
+import serial
+
+# ── LIAL-Link protocol ─────────────────────────────────────────────────
 OP_DISCOVERY = 0x01
 OP_BYTECODE_PUSH = 0x02
 OP_EXEC_RESULT = 0x03
+
+MAX_COMPILE_RETRIES = 2
+
+
+def _make_frame(opcode: int, payload: bytes) -> bytes:
+    return struct.pack(">BI", opcode, len(payload)) + payload
+
+
+def _read_frame(ser: serial.Serial, timeout: float = 30.0):
+    """Read one LIAL-Link frame.  Returns (opcode, payload) or raises."""
+    deadline = time.time() + timeout
+    buf = b""
+    while len(buf) < 5:
+        left = deadline - time.time()
+        if left <= 0:
+            raise TimeoutError(f"header timeout ({len(buf)}/5 bytes)")
+        ser.timeout = left
+        chunk = ser.read(5 - len(buf))
+        if chunk:
+            buf += chunk
+
+    opcode = buf[0]
+    plen = struct.unpack(">I", buf[1:5])[0]
+
+    payload = b""
+    while len(payload) < plen:
+        left = deadline - time.time()
+        if left <= 0:
+            raise TimeoutError(f"payload timeout ({len(payload)}/{plen})")
+        ser.timeout = left
+        chunk = ser.read(plen - len(payload))
+        if chunk:
+            payload += chunk
+
+    return opcode, payload
+
+
+# ── LLM integration ────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """\
 You are a firmware engineer writing Rust code for an embedded device via the LIAL framework.
 
 The device exposes these syscalls (imported via `unsafe extern "C"`):
-  fn lial_gpio_set(pin: u32, state: u32);
-  fn lial_gpio_get(pin: u32) -> u32;
-  fn lial_delay_ms(ms: u32);
-  fn lial_get_uptime_us() -> u64;
+  fn lial_gpio_set(pin: u32, state: u32);   // 1 = HIGH, 0 = LOW
+  fn lial_gpio_get(pin: u32) -> u32;        // returns 1 or 0
+  fn lial_delay_ms(ms: u32);                // blocking delay
+  fn lial_get_uptime_us() -> u64;           // microseconds since boot
   fn lial_i2c_transfer(addr: u32, tx_ptr: u32, tx_len: u32, rx_ptr: u32, rx_len: u32) -> i32;
-  fn lial_log(ptr: u32);
+  fn lial_log(ptr: u32, len: u32);          // log a UTF-8 message (pointer + byte length)
 
 Rules:
-- Write ONLY the function body. Do NOT write `extern` declarations, `#![no_std]`, or panic handlers -- those are provided by the compiler wrapper.
-- Your code MUST include exactly one `#[unsafe(no_mangle)] pub extern "C" fn run_logic()` function.
-- All syscall calls must be inside `unsafe {{ }}` blocks.
-- Use only the syscalls listed above.
-- Keep code minimal and correct. No standard library, no allocations.
+- Write ONLY the function body. Do NOT write `extern` declarations, `#![no_std]`,
+  or panic handlers -- those are injected by the compiler wrapper.
+- Your code MUST contain exactly one function:
+    #[unsafe(no_mangle)]
+    pub extern "C" fn run_logic() {{ ... }}
+- All syscall calls must be in `unsafe {{ }}` blocks.
+- To log a message:  let msg = b"hello"; lial_log(msg.as_ptr() as u32, msg.len() as u32);
+- Use only the syscalls listed above. No std, no alloc, no other crates.
+- Keep code minimal and correct.
 
-Device manifest:
-{manifest}
+Device info:
+{device_info}
 """
 
 
-class LIALLink:
-    """Communicates with a LIAL Receiver over LIAL-Link v0.1 frames."""
-
-    def __init__(self, proc=None, serial_port=None):
-        self._proc = proc
-        self._serial = serial_port
-
-    @classmethod
-    def from_subprocess(cls, cmd: str):
-        import shlex
-        proc = subprocess.Popen(
-            shlex.split(cmd),
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        return cls(proc=proc)
-
-    @classmethod
-    def from_serial(cls, port: str, baud: int = 115200):
-        import serial
-        ser = serial.Serial(port, baud, timeout=30)
-        return cls(serial_port=ser)
-
-    def _read_exact(self, n: int) -> bytes:
-        if self._proc:
-            data = self._proc.stdout.read(n)
-        elif self._serial:
-            data = self._serial.read(n)
-        else:
-            raise RuntimeError("No transport configured")
-        if len(data) < n:
-            raise ConnectionError(f"Short read: expected {n} bytes, got {len(data)}")
-        return data
-
-    def _write(self, data: bytes):
-        if self._proc:
-            self._proc.stdin.write(data)
-            self._proc.stdin.flush()
-        elif self._serial:
-            self._serial.write(data)
-        else:
-            raise RuntimeError("No transport configured")
-
-    def read_frame(self) -> tuple[int, bytes]:
-        header = self._read_exact(5)
-        opcode = header[0]
-        length = struct.unpack(">I", header[1:5])[0]
-        payload = self._read_exact(length) if length > 0 else b""
-        return opcode, payload
-
-    def write_frame(self, opcode: int, payload: bytes):
-        header = bytes([opcode]) + struct.pack(">I", len(payload))
-        self._write(header + payload)
-
-    def read_discovery(self) -> dict:
-        opcode, payload = self.read_frame()
-        if opcode != OP_DISCOVERY:
-            raise RuntimeError(f"Expected discovery (0x01), got 0x{opcode:02x}")
-        return json.loads(payload)
-
-    def push_bytecode(self, wasm_bytes: bytes):
-        self.write_frame(OP_BYTECODE_PUSH, wasm_bytes)
-
-    def receive_result(self) -> dict:
-        opcode, payload = self.read_frame()
-        if opcode != OP_EXEC_RESULT:
-            raise RuntimeError(f"Expected result (0x03), got 0x{opcode:02x}")
-        return json.loads(payload)
-
-    def close(self):
-        if self._proc:
-            self._proc.stdin.close()
-            self._proc.wait(timeout=5)
-        if self._serial:
-            self._serial.close()
-
-    def drain_stderr(self) -> str:
-        """Read any available stderr (non-blocking) from subprocess."""
-        if not self._proc or not self._proc.stderr:
-            return ""
-        import select
-        result = []
-        while select.select([self._proc.stderr], [], [], 0.0)[0]:
-            chunk = self._proc.stderr.read(4096)
-            if not chunk:
-                break
-            result.append(chunk.decode(errors="replace"))
-        return "".join(result)
-
-
-def generate_driver_openai(prompt: str, manifest: str) -> str:
+def _call_openai(messages: list[dict]) -> str:
     from openai import OpenAI
+
     client = OpenAI()
-    response = client.chat.completions.create(
+    resp = client.chat.completions.create(
         model="gpt-4o",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT.format(manifest=manifest)},
-            {"role": "user", "content": prompt},
-        ],
+        messages=messages,
         temperature=0.2,
     )
-    return response.choices[0].message.content
+    return resp.choices[0].message.content
 
 
-def generate_driver_anthropic(prompt: str, manifest: str) -> str:
-    from anthropic import Anthropic
-    client = Anthropic()
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2048,
-        system=SYSTEM_PROMPT.format(manifest=manifest),
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.content[0].text
+def _extract_rust(text: str) -> str:
+    """Pull the Rust code out of an LLM response, stripping markdown fences."""
+    for pat in [r"```rust\s*\n(.*?)```", r"```\s*\n(.*?)```"]:
+        m = re.search(pat, text, re.DOTALL)
+        if m:
+            return m.group(1).strip()
+    return text.strip()
 
 
-def generate_driver(prompt: str, manifest: str) -> str:
-    provider = os.environ.get("LIAL_LLM_PROVIDER", "openai").lower()
-    if provider == "anthropic":
-        return generate_driver_anthropic(prompt, manifest)
-    return generate_driver_openai(prompt, manifest)
+# ── Serial helpers ──────────────────────────────────────────────────────
+
+def _detect_port() -> str | None:
+    """Try to find the ESP32 USB-serial-JTAG port."""
+    for pattern in ["/dev/cu.usbmodem*", "/dev/ttyACM*", "/dev/ttyUSB*"]:
+        matches = glob.glob(pattern)
+        if matches:
+            return matches[0]
+    return None
 
 
-def extract_rust_code(llm_response: str) -> str:
-    """Extract Rust code from LLM response, stripping markdown fences."""
-    patterns = [
-        r"```rust\s*\n(.*?)```",
-        r"```\s*\n(.*?)```",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, llm_response, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-    return llm_response.strip()
+def _try_read_discovery(ser: serial.Serial, timeout=3.0):
+    """Attempt to read a discovery frame; returns dict or None."""
+    try:
+        opcode, payload = _read_frame(ser, timeout=timeout)
+        if opcode == OP_DISCOVERY:
+            return json.loads(payload)
+    except (TimeoutError, json.JSONDecodeError):
+        pass
+    return None
 
+
+# ── Main loop ───────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="LIAL Host Orchestrator")
-    transport = parser.add_mutually_exclusive_group(required=True)
-    transport.add_argument("--port", help="Serial port (e.g. /dev/tty.usbserial-XXX)")
-    transport.add_argument("--subprocess", help="Receiver command to spawn as subprocess")
-    transport.add_argument("--baud", type=int, default=115200, help="Serial baud rate")
+    parser = argparse.ArgumentParser(description="LIAL Host")
+    parser.add_argument("--port", help="Serial port (auto-detected if omitted)")
+    parser.add_argument("--baud", type=int, default=115200)
     args = parser.parse_args()
 
-    # Lazy import compiler
-    sys.path.insert(0, os.path.dirname(__file__))
-    from lial_compiler import compile_to_bytes
+    # Locate compiler
+    host_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, host_dir)
+    from lial_compiler import compile_rust_to_wasm
 
-    print("Connecting to receiver...")
-    if args.subprocess:
-        link = LIALLink.from_subprocess(args.subprocess)
+    # Resolve serial port
+    port = args.port or _detect_port()
+    if not port:
+        print("No serial port found. Plug in the ESP32 or pass --port.")
+        sys.exit(1)
+
+    print(f"  Opening {port} @ {args.baud} baud …")
+    ser = serial.Serial(port, args.baud, timeout=5)
+    time.sleep(0.3)
+    ser.reset_input_buffer()
+
+    # Device manifest -- try reading discovery, fall back to hardcoded
+    manifest = _try_read_discovery(ser, timeout=3.0)
+    if manifest:
+        device = manifest.get("device", "unknown")
+        pins = manifest.get("pins", [])
+        print(f"  Device : {device}")
+        print(f"  Pins   : {pins}")
     else:
-        link = LIALLink.from_serial(args.port, args.baud)
+        manifest = {
+            "device": "esp32c3",
+            "pins": [5],
+            "buses": {"i2c": []},
+            "memory_kb": 320,
+        }
+        print("  Device : esp32c3 (discovery missed, using defaults)")
+        print("  Pins   : [5]")
+
+    device_info = json.dumps(manifest, indent=2)
+    system_msg = {"role": "system", "content": SYSTEM_PROMPT.format(device_info=device_info)}
+
+    print()
+    print("╔══════════════════════════════════════════════════════╗")
+    print("║          LIAL Host  ·  type a task, hit enter       ║")
+    print("╚══════════════════════════════════════════════════════╝")
+    print()
+
+    # Conversation history (keeps context for retries)
+    history: list[dict] = [system_msg]
 
     try:
-        manifest = link.read_discovery()
-        print(f"Device: {manifest.get('device', 'unknown')}")
-        print(f"Pins: {manifest.get('pins', [])}")
-        print(f"Alphabet: {manifest.get('alphabet', [])}")
-        manifest_str = json.dumps(manifest, indent=2)
-
-        print("\nLIAL Host Ready. Type a task for the device (or 'quit' to exit).\n")
-
         while True:
             try:
-                user_input = input("lial> ").strip()
+                user_input = input("  you → ").strip()
             except (EOFError, KeyboardInterrupt):
-                print("\nExiting.")
+                print("\n  Bye.")
                 break
 
             if not user_input:
@@ -224,44 +200,95 @@ def main():
             if user_input.lower() in ("quit", "exit", "q"):
                 break
 
-            print("Asking LLM...")
+            # Fresh conversation per task (keep system prompt)
+            history = [system_msg, {"role": "user", "content": user_input}]
+
+            # ── Step 1: ask LLM ─────────────────────────────────
+            print("  Generating code …")
             try:
-                llm_response = generate_driver(user_input, manifest_str)
+                raw = _call_openai(history)
             except Exception as e:
-                print(f"LLM error: {e}")
+                print(f"  LLM error: {e}\n")
                 continue
 
-            code = extract_rust_code(llm_response)
-            print(f"\n--- Generated Code ---\n{code}\n--- End Code ---\n")
+            history.append({"role": "assistant", "content": raw})
+            code = _extract_rust(raw)
+            print()
+            print("  ┌─ Generated Code ─────────────────────────────")
+            for line in code.splitlines():
+                print(f"  │ {line}")
+            print("  └─────────────────────────────────────────────")
+            print()
 
-            print("Compiling to wasm...")
+            # ── Step 2: compile (with retry) ────────────────────
+            wasm_bytes = None
+            for attempt in range(1 + MAX_COMPILE_RETRIES):
+                print(f"  Compiling to wasm …" + (f" (retry {attempt})" if attempt else ""))
+                try:
+                    wasm_bytes = compile_rust_to_wasm(code)
+                    break
+                except RuntimeError as e:
+                    error_text = str(e)
+                    # Only show the last ~20 lines of compiler output
+                    short = "\n".join(error_text.strip().splitlines()[-20:])
+                    print(f"  Compile error:\n{short}\n")
+
+                    if attempt < MAX_COMPILE_RETRIES:
+                        print("  Asking LLM to fix …")
+                        fix_msg = (
+                            f"The code failed to compile. Here is the error:\n\n"
+                            f"```\n{error_text}\n```\n\n"
+                            f"Please output the corrected complete function body."
+                        )
+                        history.append({"role": "user", "content": fix_msg})
+                        try:
+                            raw = _call_openai(history)
+                        except Exception as ex:
+                            print(f"  LLM error: {ex}\n")
+                            break
+                        history.append({"role": "assistant", "content": raw})
+                        code = _extract_rust(raw)
+                        print()
+                        print("  ┌─ Revised Code ──────────────────────────────")
+                        for line in code.splitlines():
+                            print(f"  │ {line}")
+                        print("  └─────────────────────────────────────────────")
+                        print()
+
+            if wasm_bytes is None:
+                print("  Could not compile after retries. Try rephrasing.\n")
+                continue
+
+            print(f"  Compiled OK — {len(wasm_bytes)} bytes")
+
+            # ── Step 3: push to device ──────────────────────────
+            print("  Pushing to ESP32 …")
+            ser.reset_input_buffer()
+            ser.write(_make_frame(OP_BYTECODE_PUSH, wasm_bytes))
+            ser.flush()
+            print("  Running on device …")
+
+            # ── Step 4: wait for result ─────────────────────────
             try:
-                wasm_bytes = compile_to_bytes(code, lang="rust")
-            except RuntimeError as e:
-                print(f"Compilation failed: {e}")
-                print("Retrying with LLM...\n")
-                continue
-
-            print(f"Compiled: {len(wasm_bytes)} bytes")
-            print("Pushing to receiver...")
-            link.push_bytecode(wasm_bytes)
-
-            print("Waiting for result...")
-            result = link.receive_result()
-
-            stderr_output = link.drain_stderr()
-            if stderr_output:
-                print(f"\n--- Receiver Logs ---\n{stderr_output}--- End Logs ---")
-
-            if result.get("ok"):
-                print(f"Execution successful. Logs: {result.get('logs', [])}")
-            else:
-                print(f"Execution failed: {result.get('error', 'unknown')}")
+                opcode, payload = _read_frame(ser, timeout=30.0)
+                if opcode == OP_EXEC_RESULT:
+                    result = json.loads(payload)
+                    if result.get("ok"):
+                        logs = result.get("logs", [])
+                        print("  ✓ Execution finished.")
+                        if logs:
+                            print(f"  Device logs: {logs}")
+                    else:
+                        print(f"  ✗ Device error: {result.get('error', 'unknown')}")
+                else:
+                    print(f"  Unexpected frame: opcode=0x{opcode:02x}")
+            except TimeoutError:
+                print("  Timed out waiting for device response.")
 
             print()
 
     finally:
-        link.close()
+        ser.close()
 
 
 if __name__ == "__main__":

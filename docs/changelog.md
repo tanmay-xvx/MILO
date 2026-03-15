@@ -5,19 +5,49 @@ Format follows a simplified [Keep a Changelog](https://keepachangelog.com/) styl
 
 ---
 
+## [Week 1 — ESP32-C3 End-to-End] — 2026-03-15
+
+### Added
+
+- **ESP32-C3 firmware working end-to-end.** Full pipeline verified: natural language → GPT-4o → Rust → wasm (618 bytes) → USB serial → ESP32-C3 wasmi interpreter → GPIO5 LED blinks → JSON result returned to host.
+- **wasmi patches** (`patches/`) — Local forks of 4 crates enabling wasmi on `riscv32imc-unknown-none-elf`:
+  - `wasmi`: `Arc`→`Rc`, all `Send+Sync` bounds removed, `portable-atomic` for `AtomicU32`.
+  - `wasmi_core`: `Arc`→`Rc` in `fuel.rs` and `func_type.rs`.
+  - `wasmi_collections`: `Arc<str>`→`Rc<str>` in string interner.
+  - `wasmparser`: `Arc`→`Rc`, `core::sync::atomic`→`portable_atomic`.
+- **`Esp32C3Hal`** (`esp32c3.rs`) — Real hardware implementation using `esp-hal` 1.0: GPIO output, busy-wait delay, `embedded_io::Read/Write` generic over USB Serial JTAG.
+- **Dual-target `main.rs`** — `#[esp_hal::main]` for ESP32-C3 (`no_std`), standard `fn main()` for laptop. Controlled by `esp32c3` / `std` feature flags.
+- **`esp-bootloader-esp-idf`** integration — `esp_app_desc!()` macro for ESP-IDF bootloader compatibility.
+- **`blink_led` test driver** — 618-byte wasm binary that blinks GPIO5 five times, memory-constrained to 1 page (64KB).
+- **`serial_push.py`** — Low-level Python tool for pushing pre-built wasm to the ESP32 over serial.
+- **`lial_host.py` rewrite** — Interactive CLI with serial auto-detection, GPT-4o integration, compile-error retry loop (up to 2 retries), clear status messages during push and execution.
+- **`lial_compiler.py` rewrite** — Generates memory-constrained wasm (64KB initial/max, 4KB stack). Fixed `lial_log` signature to `(ptr: u32, len: u32)`.
+- **`.cargo/config.toml`** for ESP32-C3 — `portable_atomic_unsafe_assume_single_core`, `-Tlinkall.x` linker script, `build-std = ["core", "alloc"]`.
+
+### Changed
+
+- **`lial_log` signature** — Changed from `(ptr: u32)` (null-terminated) to `(ptr: u32, len: u32)` (pointer + length) across receiver, compiler, and system prompt.
+- **`LialRuntime`** — Added `into_hardware()` method to recover the `LialHardware` impl after execution, enabling the ESP32 main loop to reuse peripherals.
+- **`Cargo.toml`** — Added `embedded-io`, `portable-atomic`, `esp-bootloader-esp-idf` dependencies. `[patch.crates-io]` section for all 4 patched crates.
+
+### Fixed
+
+- **ESP32-C3 wasmi build** — Resolved the `alloc::sync::Arc` atomics blocker by patching wasmi, wasmi_core, wasmi_collections, and wasmparser to use `Rc` and `portable-atomic`.
+- **Wasm memory overflow on ESP32** — Driver wasm binaries previously requested 17 pages (1MB+) of linear memory. Now constrained to 1 page (64KB) via linker flags in the compiler.
+- **Serial protocol corruption** — `Esp32C3Hal::log()` was writing raw text to the same serial line used for binary LIAL-Link frames. Fixed by making `log()` a no-op on ESP32 (messages are captured in `HostState.logs` and returned in the result frame).
+
+---
+
 ## [Week 1 — Hardware Pivot] — 2026-03-15
 
 ### Added
 
 - **Receiver library** (`lib.rs`) with `LialHardware` trait (6 syscalls), `LialRuntime<H>` generic executor, `LialError` enum, gas metering via wasmi fuel.
 - **LaptopMock** (`mock.rs`) — Full `LialHardware` implementation for laptop development.
-- **Esp32C3Hal** (`esp32c3.rs`) — Structural stub, blocked on wasmi atomics issue.
 - **LIAL-Link v0.1** (`link.rs`) — Binary frame protocol: `[opcode: u8][len: u32 BE][payload]`, OpCodes 0x01-0x03.
 - **stdin pipe mode** — Receiver subprocess communicates via LIAL-Link frames on stdin/stdout.
 - **Integration tests** — 4 tests covering happy path, missing export, fuel exhaustion, bad module.
 - **Test fixtures** — `infinite_loop` (gas test), `no_export` (missing export test).
-- **Host orchestrator** (`lial_host.py`) — LIALLink transport, LLM prompter (OpenAI + Anthropic), CLI loop.
-- **JIT compiler rewrite** (`lial_compiler.py`) — Rust cdylib pipeline, `compile_to_bytes()` API, auto-detection of clang/wasm-ld.
 
 ### Changed
 
@@ -28,71 +58,24 @@ Format follows a simplified [Keep a Changelog](https://keepachangelog.com/) styl
 
 - `lial_std.rs` — Dead code replaced by `LialHardware` trait architecture.
 
-### Known Blocker
-
-- wasmi 1.0.9 requires `alloc::sync::Arc` (atomics) — cannot compile for `riscv32imc-unknown-none-elf`.
-
 ---
 
 ## [Unreleased] — 2026-03-12
 
 ### Fixed
 
-- **wasmi API mismatch in receiver** — Replaced non-existent two-step `linker.instantiate()` + `.start()` with `linker.instantiate_and_start()` to match `wasmi` 1.0.9 API. Receiver now compiles cleanly.
-- **mock_driver.wasm wrong target** — The old `examples/mock_driver.wasm` (1.4 MB, `wasm32-wasip1`) bundled the full Rust `std` and required WASI imports the receiver doesn't provide. Replaced with a proper `cdylib` crate build targeting `wasm32-unknown-unknown`, producing a 600-byte binary with only `lial_gpio_set`/`lial_delay_ms` imports.
-- **Rust 2024 edition compatibility** — Updated `examples/mock_driver/src/lib.rs` to use `unsafe extern "C"` blocks and `#[unsafe(no_mangle)]` as required by Rust 2024 edition.
-
-### Added
-
-- `examples/mock_driver/Cargo.toml` — Configured as a `cdylib` crate for clean `wasm32-unknown-unknown` builds.
-- `.cursor/project.md` — Reformatted with proper Markdown structure (headings, nested lists, code formatting).
-- `.cursor/rules/lial-project.mdc` — Cursor rule for project architecture context and safety constraints.
-- `docs/changelog.md` — This file.
-
-### Changed
-
-- `lial-receiver/src/main.rs` — Wasm path now points to `../examples/mock_driver/target/wasm32-unknown-unknown/release/mock_driver.wasm`.
+- **wasmi API mismatch in receiver** — Replaced non-existent two-step `linker.instantiate()` + `.start()` with `linker.instantiate_and_start()` to match `wasmi` 1.0.9 API.
+- **mock_driver.wasm wrong target** — Replaced 1.4 MB `wasm32-wasip1` binary with a 600-byte `wasm32-unknown-unknown` cdylib build.
+- **Rust 2024 edition compatibility** — Updated examples to use `unsafe extern "C"` blocks and `#[unsafe(no_mangle)]`.
 
 ### Milestone
 
-First successful end-to-end "Handshake": Receiver loads a 600-byte wasm module, links the Atomic Alphabet syscalls (`gpio_set`, `delay_ms`), and executes a 3-cycle GPIO blink loop on a laptop.
+First successful end-to-end "Handshake": Receiver loads a 600-byte wasm module, links Alphabet syscalls, and executes a 3-cycle GPIO blink loop on a laptop.
 
 ---
 
-## [Day 2] — 2026-03-12 — `a447247`
-
-> Baseline state before the fixes above.
-
-### Status
-
-- Week 1 Goal ("Foundations & The Alphabet"): ~40% complete.
-- Receiver compiled but could not instantiate wasm modules due to API mismatch.
-
-### Pending Hurdles
-
-- **API Alignment:** `wasmi` version-specific traits preventing correct function wrapping for the Wasm Linker.
-- **Host Function Binding:** Bridge between Rust functions and Wasm execution environment not finalized.
-- **Linker Configuration:** macOS-specific `clang`/`lld` paths causing issues for Wasm cross-compilation.
-- **Binary Packaging:** Generated `.wasm` files not compatible with the `wasmi` runtime (WASI target vs. `wasm32-unknown-unknown`).
-
-### Accomplishments
-
-- Architectural definition complete (Host / Link / Receiver).
-- "Alphabet vs. Phrasebook" strategy established.
-- Repository structured as a monorepo with `lial-receiver/`, `lial-host/`, `lial-link/`, `lial-pulse-driver/`, `examples/`.
-- `lial_std.h` header defining the Atomic Alphabet (GPIO, timing, I2C, logging).
-- `lial_compiler.py` host-side JIT compiler (C string to Wasm via Clang).
-- `lial-receiver/src/main.rs` initial implementation with `wasmi` engine, function wrapping, and module loading.
-
----
-
-## [Day 1] — 2026-03-11 — `458d8e4` .. `f45351c`
+## [Day 1] — 2026-03-11
 
 ### Added
 
-- Initial project architecture (`PROJECT_LIAL.md`).
-- `lial_std.h` — Standard header with GPIO, timing, I2C, and logging function declarations.
-- `lial_compiler.py` — Python JIT compiler (C string to Wasm via WASI-SDK Clang).
-- `lial-pulse-driver/` — Placeholder Rust crate for driver development.
-- `.gitignore` — Excludes `target/`, `*.wasm`, `*.o`, `.env`, Python cache.
-- `README.md` — Development and simulation instructions.
+- Initial project architecture, `lial_std.h` header, `lial_compiler.py` JIT compiler, `lial-pulse-driver/` placeholder, `.gitignore`, `README.md`.
