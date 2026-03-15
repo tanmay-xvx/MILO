@@ -135,6 +135,30 @@ For any control loop with \(N > 1\) iterations, LIAL dominates because \(t_{\tex
 - **Hardware:** ESP32-C3/S3, STM32 (ARM Cortex-M), or Raspberry Pi.
 - **Crates:** `wasmi` (with `default-features = false`), `embedded-hal`.
 
-## 9. Development Tracking
+## 9. Hardware Abstraction Strategy
 
-Weekly action plans, changelogs, and status are maintained in `docs/weekN/`. See `docs/week1/actionPlan.md` for the current plan.
+The Receiver uses a **`LialHardware` trait** to abstract all syscalls away from the runtime:
+
+```rust
+pub trait LialHardware {
+    fn gpio_set(&mut self, pin: u32, state: u32);
+    fn gpio_get(&mut self, pin: u32) -> u32;
+    fn delay_ms(&mut self, ms: u32);
+    fn get_uptime_us(&self) -> u64;
+    fn i2c_transfer(&mut self, addr: u8, tx: &[u8], rx: &mut [u8]) -> i32;
+    fn log(&mut self, message: &str);
+}
+```
+
+`LialRuntime<H: LialHardware>` is generic over the hardware backend. The runtime, wasm execution, linker, gas metering, and protocol code are fully board-agnostic.
+
+**Phase 1 (Week 1):** Per-board implementations -- `LaptopMock` for development/testing, `Esp32C3Hal` for real hardware via `esp-hal`.
+
+**Phase 2 (Week 2):** A single generic `EmbeddedHalAdapter<P, D, I>` that accepts any board's `embedded-hal`-compatible peripherals (`OutputPin`, `InputPin`, `DelayNs`, `I2c`). Adding a new board requires zero LIAL code changes -- just instantiate the adapter with the board's HAL.
+
+## 10. Development Tracking
+
+Weekly action plans, changelogs, and status are maintained in `docs/weekN/`. See the current week's `actionPlan.md` for the active plan.
+
+- `docs/week1/` -- Receiver library, Serial transport, JIT compiler, Host orchestrator, ESP32-C3 deployment
+- `docs/week2/` -- Generic `embedded-hal` adapter, SVD manifest auto-generation, CBOR serialization, multi-device support

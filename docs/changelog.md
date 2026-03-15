@@ -5,6 +5,35 @@ Format follows a simplified [Keep a Changelog](https://keepachangelog.com/) styl
 
 ---
 
+## [Week 1 — Hardware Pivot] — 2026-03-15
+
+### Added
+
+- **Receiver library** (`lib.rs`) with `LialHardware` trait (6 syscalls), `LialRuntime<H>` generic executor, `LialError` enum, gas metering via wasmi fuel.
+- **LaptopMock** (`mock.rs`) — Full `LialHardware` implementation for laptop development.
+- **Esp32C3Hal** (`esp32c3.rs`) — Structural stub, blocked on wasmi atomics issue.
+- **LIAL-Link v0.1** (`link.rs`) — Binary frame protocol: `[opcode: u8][len: u32 BE][payload]`, OpCodes 0x01-0x03.
+- **stdin pipe mode** — Receiver subprocess communicates via LIAL-Link frames on stdin/stdout.
+- **Integration tests** — 4 tests covering happy path, missing export, fuel exhaustion, bad module.
+- **Test fixtures** — `infinite_loop` (gas test), `no_export` (missing export test).
+- **Host orchestrator** (`lial_host.py`) — LIALLink transport, LLM prompter (OpenAI + Anthropic), CLI loop.
+- **JIT compiler rewrite** (`lial_compiler.py`) — Rust cdylib pipeline, `compile_to_bytes()` API, auto-detection of clang/wasm-ld.
+
+### Changed
+
+- **Receiver main.rs** — Rewritten as thin CLI wrapper: `--fuel N`, `<wasm_path>`, `--stdin` modes.
+- **Cargo.toml** — Feature flags (`std`, `esp32c3`), optional esp-hal/esp-alloc dependencies.
+
+### Removed
+
+- `lial_std.rs` — Dead code replaced by `LialHardware` trait architecture.
+
+### Known Blocker
+
+- wasmi 1.0.9 requires `alloc::sync::Arc` (atomics) — cannot compile for `riscv32imc-unknown-none-elf`.
+
+---
+
 ## [Unreleased] — 2026-03-12
 
 ### Fixed

@@ -168,6 +168,17 @@ Execution result: OK
 
 ---
 
+## Deferred to Week 2
+
+The following items are intentionally out of scope for Week 1 and will be addressed in `docs/week2/actionPlan.md`:
+
+- **Generic `embedded-hal` Adapter:** Week 1 uses per-board `LialHardware` trait implementations (`LaptopMock`, `Esp32C3Hal`). In Week 2, these will be replaced by a single generic `EmbeddedHalAdapter<P, D, I>` that works with any board implementing `embedded-hal` traits (`OutputPin`, `InputPin`, `DelayNs`, `I2c`). This eliminates per-board LIAL code entirely -- adding a new board becomes a matter of instantiating the adapter with that board's HAL peripherals, with zero changes to the runtime.
+- **SVD/Manifest Auto-Generation:** Replace hardcoded Hardware Manifests with auto-generated ones from SVD (System View Description) files.
+- **CBOR Serialization:** Upgrade LIAL-Link from raw length-prefixed frames to proper CBOR encoding.
+- **Multi-Device Support:** Host orchestrator managing multiple receivers simultaneously.
+
+---
+
 ## Files to Create/Modify
 
 | File | Action |

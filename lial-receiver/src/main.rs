@@ -1,50 +1,112 @@
-use wasmi::{Engine, Linker, Module, Store, Caller, Func};
+use lial_receiver::link::{self, Frame, OP_BYTECODE_PUSH, OP_DISCOVERY, OP_EXEC_RESULT};
+use lial_receiver::mock::LaptopMock;
+use lial_receiver::LialRuntime;
 use std::fs;
+use std::io;
 
-// --- 1. THE ATOMIC ALPHABET ---
-// These are the "Manual" functions that talk to your actual hardware.
-fn lial_gpio_set(_caller: Caller<'_, ()>, pin: u32, state: u32) {
-    println!(" [SILICON] GPIO {} -> {}", pin, if state == 1 { "ON" } else { "OFF" });
+const HARDWARE_MANIFEST: &str = r#"{"device":"laptop-mock","pins":[0,1,2,3,4,5],"buses":{"i2c":[]},"memory_kb":4096,"alphabet":["lial_gpio_set","lial_gpio_get","lial_delay_ms","lial_get_uptime_us","lial_i2c_transfer","lial_log"]}"#;
+
+fn run_file(path: &str, fuel: Option<u64>) -> Result<(), Box<dyn std::error::Error>> {
+    eprintln!("LIAL Receiver Active (Rust Engine)");
+    let hw = LaptopMock::new();
+    let mut runtime = LialRuntime::new(hw, fuel);
+
+    eprintln!("Loading bytecode from: {path}");
+    let wasm_bytes = fs::read(path)?;
+
+    eprintln!("Executing LIAL Driver...");
+    match runtime.execute(&wasm_bytes, "run_logic") {
+        Ok(logs) => {
+            eprintln!("Task Complete. ({} log entries)", logs.len());
+        }
+        Err(e) => {
+            eprintln!("Execution failed: {e}");
+            std::process::exit(1);
+        }
+    }
+    Ok(())
 }
 
-fn lial_delay_ms(_caller: Caller<'_, ()>, ms: u32) {
-    println!(" [TIMER] Waiting {}ms...", ms);
-    // For this laptop test, we use standard thread sleep
-    std::thread::sleep(std::time::Duration::from_millis(ms as u64));
+fn run_stdin(fuel: Option<u64>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut stdin = io::stdin().lock();
+    let mut stdout = io::stdout().lock();
+
+    let manifest_frame = Frame::new(OP_DISCOVERY, HARDWARE_MANIFEST.as_bytes().to_vec());
+    link::write_frame(&mut stdout, &manifest_frame)?;
+
+    loop {
+        let frame = match link::read_frame(&mut stdin) {
+            Ok(f) => f,
+            Err(link::LinkError::ConnectionClosed) => break,
+            Err(e) => {
+                let err_json = format!(r#"{{"error":"{}"}}"#, e);
+                let resp = Frame::new(OP_EXEC_RESULT, err_json.into_bytes());
+                link::write_frame(&mut stdout, &resp)?;
+                continue;
+            }
+        };
+
+        if frame.opcode != OP_BYTECODE_PUSH {
+            let err_json = format!(
+                r#"{{"error":"unexpected opcode 0x{:02x}, expected 0x02"}}"#,
+                frame.opcode
+            );
+            let resp = Frame::new(OP_EXEC_RESULT, err_json.into_bytes());
+            link::write_frame(&mut stdout, &resp)?;
+            continue;
+        }
+
+        let hw = LaptopMock::new();
+        let mut runtime = LialRuntime::new(hw, fuel);
+
+        let result_json = match runtime.execute(&frame.payload, "run_logic") {
+            Ok(logs) => {
+                format!(r#"{{"ok":true,"logs":{}}}"#, serde_json::to_string(&logs).unwrap_or_else(|_| "[]".into()))
+            }
+            Err(e) => {
+                format!(r#"{{"ok":false,"error":"{}"}}"#, e)
+            }
+        };
+
+        let resp = Frame::new(OP_EXEC_RESULT, result_json.into_bytes());
+        link::write_frame(&mut stdout, &resp)?;
+    }
+
+    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🚀 LIAL Receiver Active (Rust Engine)");
+    let args: Vec<String> = std::env::args().collect();
 
-    // 2. Initialize the Wasm Engine
-    let engine = Engine::default();
-    let mut store = Store::new(&engine, ());
-    let mut linker = <Linker<()>>::new(&engine);
+    let mut fuel: Option<u64> = None;
+    let mut wasm_path: Option<String> = None;
+    let mut stdin_mode = false;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--fuel" => {
+                i += 1;
+                fuel = Some(args[i].parse().expect("--fuel requires a number"));
+            }
+            "--stdin" => {
+                stdin_mode = true;
+            }
+            other => {
+                wasm_path = Some(other.to_string());
+            }
+        }
+        i += 1;
+    }
 
-    // 3. WRAPPING & LINKING THE ALPHABET
-    // We must wrap Rust functions so Wasm can understand their "signature"
-    let gpio_set_func = Func::wrap(&mut store, lial_gpio_set);
-    let delay_ms_func = Func::wrap(&mut store, lial_delay_ms);
+    if stdin_mode {
+        return run_stdin(fuel);
+    }
 
-    linker.define("env", "lial_gpio_set", gpio_set_func)?;
-    linker.define("env", "lial_delay_ms", delay_ms_func)?;
+    if let Some(path) = wasm_path {
+        return run_file(&path, fuel);
+    }
 
-    // 4. LOAD THE BYTECODE
-    // Make sure you compiled mock_driver.wasm in the examples folder!
-    println!("📂 Loading LLM Bytecode...");
-    let wasm_bytes = fs::read("../examples/mock_driver/target/wasm32-unknown-unknown/release/mock_driver.wasm")
-        .expect("Could not find mock_driver.wasm. Build it with: cargo build --target wasm32-unknown-unknown --release");
-    
-    let module = Module::new(&engine, &wasm_bytes[..])?;
-
-    // 5. INSTANTIATE AND RUN
-    let instance = linker.instantiate_and_start(&mut store, &module)?;
-
-    let run_logic = instance.get_typed_func::<(), ()>(&store, "run_logic")?;
-
-    println!("🚀 Executing LIAL Driver...");
-    run_logic.call(&mut store, ())?;
-
-    println!("✅ Task Complete.");
-    Ok(())
+    eprintln!("Usage: lial-receiver [--fuel N] <wasm_path>");
+    eprintln!("       lial-receiver [--fuel N] --stdin");
+    std::process::exit(1);
 }

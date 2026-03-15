@@ -3,5 +3,13 @@ name = "lial-receiver"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["std"]
+std = ["wasmi/std", "serde_json/std"]
+esp32c3 = ["dep:esp-hal", "dep:esp-alloc"]
+
 [dependencies]
 wasmi = { version = "1.0.9", default-features = false }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+esp-hal = { version = "1.0.0", features = ["esp32c3"], optional = true }
+esp-alloc = { version = "0.7", optional = true }
