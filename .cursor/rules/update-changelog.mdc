@@ -1,0 +1,49 @@
+---
+description: "Update project docs. Use when the user says 'update docs', 'update changelog', 'log changes', 'finalize week', or 'week done'."
+globs: docs/**/*.md
+alwaysApply: false
+---
+
+# Update Docs
+
+## Determine the current week
+
+Run `git branch --show-current` to get the branch name (e.g., `week1`, `week2`).
+Use that as `weekN` for all paths below. If the branch is not `weekN`-shaped, fall back to the most recent `docs/week*/` directory.
+
+## When asked to "update docs" or "update changelog"
+
+### 1. Gather the diff
+
+- Read `docs/weekN/changelog.md` to find the last recorded entry.
+- Run `git log --oneline` for new commits since the last entry.
+- Run `git status --short` and `git diff HEAD --stat` for uncommitted changes.
+
+### 2. Update three files
+
+**`docs/weekN/changelog.md`** (week-scoped):
+- Insert a new dated section at the top (below the header).
+- Categorize changes under: **Added**, **Changed**, **Fixed**, **Removed**, **Milestone** (omit empty sections).
+- Each bullet: **bold label** -- description. Reference specific files.
+- Never delete previous entries.
+
+**`docs/weekN/currentStatus.md`** (living status):
+- Move newly completed items from "In Progress" / "Next Up" to "Completed".
+- Update "In Progress" with whatever is currently being worked on.
+- Update "Blocked" if anything is stuck.
+- Update "Next Up" with the next tasks from `docs/weekN/actionPlan.md`.
+
+**`docs/changelog.md`** (project-wide):
+- Append the same changelog entry to the project-wide file.
+- Follow the existing format (Keep a Changelog style with `---` separators).
+
+## When asked to "finalize week" or "week done"
+
+1. Update all three files above one final time.
+2. Create `docs/weekN/finalState.md` with:
+   - **Summary:** One paragraph on what the week accomplished.
+   - **Completed:** Full list of everything done this week.
+   - **Carries Over:** Any unfinished items that move to the next week.
+   - **Component State:** Current state of each component (Receiver, Host, Link, Examples).
+   - **Branch:** Note the branch name and final commit hash (`git rev-parse HEAD`).
+3. Tell the user the week is finalized and suggest: "Merge `weekN` into `dev`, then `git checkout -b weekN+1` to start the next week."
