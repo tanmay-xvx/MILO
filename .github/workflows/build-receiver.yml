@@ -49,10 +49,13 @@ jobs:
         with:
           workspaces: lial-receiver
 
+      - name: Install stable toolchain (for host tools like espflash)
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install espflash (for ESP targets)
         if: matrix.family == 'esp32'
         run: |
-          cargo install espflash --locked --version 3.3.0 || true
+          cargo +stable install espflash --locked --version 3.3.0
 
       - name: Build receiver
         working-directory: lial-receiver
