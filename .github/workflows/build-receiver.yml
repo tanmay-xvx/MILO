@@ -1,0 +1,116 @@
+name: Build LIAL Receiver
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: esp32c3
+            family: esp32
+            target: riscv32imc-unknown-none-elf
+            features: esp32c3
+            artifact_ext: bin
+            rust_toolchain: nightly-2024-11-01
+          # Future boards (added as their HAL adapters land):
+          # - variant: esp32s3
+          #   family: esp32
+          #   target: xtensa-esp32s3-none-elf
+          #   features: esp32s3
+          #   artifact_ext: bin
+          # - variant: rp2040
+          #   family: rp2040
+          #   target: thumbv6m-none-eabi
+          #   features: rp2040
+          #   artifact_ext: uf2
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust_toolchain }}
+          targets: ${{ matrix.target }}
+          components: rust-src
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: lial-receiver
+
+      - name: Install espflash (for ESP targets)
+        if: matrix.family == 'esp32'
+        run: |
+          cargo install espflash --locked --version 3.3.0 || true
+
+      - name: Build receiver
+        working-directory: lial-receiver
+        run: |
+          cargo +${{ matrix.rust_toolchain }} build \
+            --release \
+            --target ${{ matrix.target }} \
+            --no-default-features \
+            --features ${{ matrix.features }}
+
+      - name: Package ESP .bin image
+        if: matrix.family == 'esp32'
+        working-directory: lial-receiver
+        run: |
+          mkdir -p dist
+          espflash save-image \
+            --chip ${{ matrix.variant }} \
+            target/${{ matrix.target }}/release/lial-receiver \
+            dist/lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}
+
+      - name: Package RP2040 UF2
+        if: matrix.family == 'rp2040'
+        working-directory: lial-receiver
+        run: |
+          mkdir -p dist
+          cargo install elf2uf2-rs --locked || true
+          elf2uf2-rs target/${{ matrix.target }}/release/lial-receiver \
+            dist/lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}
+
+      - name: Record build metadata
+        working-directory: lial-receiver/dist
+        run: |
+          artifact="lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}"
+          sha256sum "$artifact" | awk '{print $1}' > "$artifact.sha256"
+          stat -c%s "$artifact" > "$artifact.size"
+          echo "{\"variant\":\"${{ matrix.variant }}\",\"family\":\"${{ matrix.family }}\",\"filename\":\"$artifact\",\"size_bytes\":$(cat $artifact.size),\"sha256\":\"$(cat $artifact.sha256)\"}" > "$artifact.meta.json"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lial-receiver-${{ matrix.variant }}
+          path: |
+            lial-receiver/dist/lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}
+            lial-receiver/dist/lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}.sha256
+            lial-receiver/dist/lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}.meta.json
+
+  host-tests:
+    name: lial-host pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install host deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pyserial
+      - name: Run tests
+        working-directory: lial-host
+        run: python -m pytest tests/ -v

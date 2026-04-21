@@ -1,3 +1,5 @@
 openai
 anthropic
 pyserial
+esptool
+pyusb
