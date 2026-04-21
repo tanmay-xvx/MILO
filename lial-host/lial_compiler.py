@@ -20,6 +20,11 @@ unsafe extern "C" {{
     fn lial_get_uptime_us() -> u64;
     fn lial_i2c_transfer(addr: u32, tx_ptr: u32, tx_len: u32, rx_ptr: u32, rx_len: u32) -> i32;
     fn lial_log(ptr: u32, len: u32);
+    fn lial_pwm_set(channel: u32, duty_0_10000: u32);
+    fn lial_adc_read(channel: u32) -> u32;
+    fn lial_spi_transfer(bus: u32, tx_ptr: u32, tx_len: u32, rx_ptr: u32, rx_len: u32) -> i32;
+    fn lial_uart_write(bus: u32, ptr: u32, len: u32) -> i32;
+    fn lial_uart_read(bus: u32, ptr: u32, len_max: u32, timeout_ms: u32) -> i32;
 }}
 
 {body}

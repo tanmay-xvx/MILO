@@ -1,0 +1,70 @@
+name: Publish Release Manifest
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to attach manifest.json to
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cd artifacts
+          mapfile -t assets < <(gh release view "$TAG" --json assets --jq '.assets[].name')
+          for asset in "${assets[@]}"; do
+            # Group per-variant files into subdirs the generator expects
+            case "$asset" in
+              lial-receiver-*)
+                variant=$(echo "$asset" | sed -E 's/^lial-receiver-([^.]+).*/\1/')
+                mkdir -p "lial-receiver-$variant"
+                gh release download "$TAG" --pattern "$asset" --dir "lial-receiver-$variant"
+                ;;
+            esac
+          done
+
+      - name: Generate manifest.json
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}
+        run: |
+          python scripts/generate_manifest.py \
+            --artifacts-dir artifacts \
+            --firmware-version "${TAG#v}" \
+            --base-url "$BASE_URL" \
+            --output manifest.json
+          cat manifest.json
+
+      - name: Upload manifest to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          gh release upload "$TAG" manifest.json --clobber

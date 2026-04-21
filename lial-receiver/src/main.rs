@@ -15,9 +15,11 @@ mod esp_entry {
 
     use lial_receiver::esp32c3::Esp32C3Hal;
     use lial_receiver::link::{Frame, OP_BYTECODE_PUSH, OP_DISCOVERY, OP_EXEC_RESULT};
+    use lial_receiver::manifest::{
+        build as build_manifest, AdcCapability, Capabilities, GpioCapability, ManifestHeader,
+        PwmCapability,
+    };
     use lial_receiver::LialRuntime;
-
-    const MANIFEST: &[u8] = br#"{"device":"esp32c3","pins":[5],"buses":{"i2c":[]},"memory_kb":320,"alphabet":["lial_gpio_set","lial_gpio_get","lial_delay_ms","lial_get_uptime_us","lial_i2c_transfer","lial_log"]}"#;
 
     #[panic_handler]
     fn panic(_info: &core::panic::PanicInfo) -> ! {
@@ -61,8 +63,39 @@ mod esp_entry {
 
         let mut hal = Esp32C3Hal::new(led, tx, rx);
 
-        // Send discovery manifest
-        let discovery = Frame::new(OP_DISCOVERY, MANIFEST.to_vec());
+        // Build a capability-accurate discovery manifest. Today the reference
+        // DevKitC-02 wiring exposes only GPIO 5 (LED). PWM + ADC pin lists
+        // reflect what `EmbeddedHalAdapter` *could* route if the board
+        // module registered those channels -- they are advertised with an
+        // empty `pins` array for now so the LLM doesn't hallucinate pins
+        // that aren't wired.
+        let header = ManifestHeader {
+            board: "esp32c3",
+            family: "esp32",
+            firmware_version: env!("CARGO_PKG_VERSION"),
+            ram_kb: 400,
+            flash_kb: 4096,
+            max_wasm_memory_kb: 64,
+            max_wasm_stack_kb: 4,
+            fuel_default: 1_000_000,
+        };
+        let caps = Capabilities {
+            gpio: GpioCapability {
+                pins: alloc::vec![5],
+            },
+            pwm: PwmCapability {
+                pins: alloc::vec![],
+                resolution_bits: 14,
+            },
+            adc: AdcCapability {
+                pins: alloc::vec![],
+                resolution_bits: 12,
+                vref_mv: 3300,
+            },
+            ..Default::default()
+        };
+        let manifest_json = build_manifest(&header, &caps);
+        let discovery = Frame::new(OP_DISCOVERY, manifest_json.into_bytes());
         write_frame(&mut hal, &discovery);
 
         // Main loop: receive wasm, execute, respond
@@ -114,12 +147,46 @@ mod esp_entry {
 #[cfg(feature = "std")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use lial_receiver::link::{self, Frame, OP_BYTECODE_PUSH, OP_DISCOVERY, OP_EXEC_RESULT};
+    use lial_receiver::manifest::{
+        build as build_manifest, AdcCapability, Capabilities, GpioCapability, ManifestHeader,
+        PwmCapability, UartCapability,
+    };
     use lial_receiver::mock::LaptopMock;
     use lial_receiver::LialRuntime;
     use std::fs;
     use std::io;
 
-    const HARDWARE_MANIFEST: &str = r#"{"device":"laptop-mock","pins":[0,1,2,3,4,5],"buses":{"i2c":[]},"memory_kb":4096,"alphabet":["lial_gpio_set","lial_gpio_get","lial_delay_ms","lial_get_uptime_us","lial_i2c_transfer","lial_log"]}"#;
+    let laptop_header = ManifestHeader {
+        board: "laptop-mock",
+        family: "mock",
+        firmware_version: env!("CARGO_PKG_VERSION"),
+        ram_kb: 4096,
+        flash_kb: 0,
+        max_wasm_memory_kb: 256,
+        max_wasm_stack_kb: 32,
+        fuel_default: 10_000_000,
+    };
+    let laptop_caps = Capabilities {
+        gpio: GpioCapability {
+            pins: vec![0, 1, 2, 3, 4, 5],
+        },
+        pwm: PwmCapability {
+            pins: vec![0, 1, 2, 3, 4, 5],
+            resolution_bits: 16,
+        },
+        adc: AdcCapability {
+            pins: vec![0, 1, 2, 3],
+            resolution_bits: 12,
+            vref_mv: 3300,
+        },
+        uart: vec![UartCapability {
+            bus_id: 1,
+            tx_pin: 0,
+            rx_pin: 0,
+        }],
+        ..Default::default()
+    };
+    let hardware_manifest = build_manifest(&laptop_header, &laptop_caps);
 
     let args: Vec<String> = std::env::args().collect();
 
@@ -148,7 +215,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut stdout = io::stdout().lock();
 
         let manifest_frame =
-            Frame::new(OP_DISCOVERY, HARDWARE_MANIFEST.as_bytes().to_vec());
+            Frame::new(OP_DISCOVERY, hardware_manifest.as_bytes().to_vec());
         link::write_frame(&mut stdout, &manifest_frame)?;
 
         loop {

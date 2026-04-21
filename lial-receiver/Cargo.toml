@@ -11,6 +11,8 @@ esp32c3 = ["dep:esp-hal", "dep:esp-alloc", "dep:portable-atomic", "dep:esp-bootl
 [dependencies]
 wasmi = { version = "1.0.9", default-features = false }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
+embedded-hal = "1.0"
+embedded-hal-nb = "1.0"
 esp-hal = { version = "1.0.0", features = ["esp32c3", "unstable"], optional = true }
 esp-alloc = { version = "0.7", optional = true }
 portable-atomic = { version = "1", optional = true, default-features = false }
