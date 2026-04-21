@@ -21,7 +21,7 @@ jobs:
             target: riscv32imc-unknown-none-elf
             features: esp32c3
             artifact_ext: bin
-            rust_toolchain: nightly-2024-11-01
+            rust_toolchain: nightly
           # Future boards (added as their HAL adapters land):
           # - variant: esp32s3
           #   family: esp32
