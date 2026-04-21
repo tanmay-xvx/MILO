@@ -49,6 +49,10 @@ jobs:
         with:
           workspaces: lial-receiver
 
+      - name: Install system deps (libudev for espflash)
+        if: matrix.family == 'esp32'
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev pkg-config
+
       - name: Install stable toolchain (for host tools like espflash)
         uses: dtolnay/rust-toolchain@stable
 
