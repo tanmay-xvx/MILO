@@ -8,8 +8,8 @@
       "display_name": "ESP32-C3 (Super Mini, XIAO, etc.)",
       "filename": "lial-receiver-esp32c3.bin",
       "url": "https://github.com/tanmay-xvx/LIAL/releases/download/v0.1.0-beta/lial-receiver-esp32c3.bin",
-      "size_bytes": 937360,
-      "sha256": "fb4f7fc0792c34c31f36bfdce8c6937fc1f8511c16383cccb17b9c8030e6866a",
+      "size_bytes": 4194304,
+      "sha256": "ed9f54c86dabd3853ff9651bd0087eb677cca8b09c9ecf5b1324eecd28a472da",
       "flash_tool": "esptool",
       "flash_offset": "0x0",
       "flash_instructions": "espflash flash --port PORT lial-receiver-esp32c3.bin"

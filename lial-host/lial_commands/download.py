@@ -22,7 +22,7 @@ from pathlib import Path
 
 DEFAULT_MANIFEST_URL = os.environ.get(
     "LIAL_MANIFEST_URL",
-    "https://github.com/tanmay-xvx/LIAL/releases/latest/download/manifest.json",
+    "https://github.com/tanmay-xvx/LIAL/releases/download/v0.1.0-beta/manifest.json",
 )
 
 DEFAULT_CACHE_DIR = Path(os.environ.get("LIAL_FIRMWARE_DIR", "./firmware"))
@@ -92,31 +92,107 @@ class DownloadError(RuntimeError):
     pass
 
 
-def fetch_manifest(url: str) -> dict:
+def _gh_api_download(url: str) -> bytes:
+    """Download a GitHub release asset via `gh api` (handles private repos)."""
+    import shutil
+    import subprocess
+
+    if shutil.which("gh") is None:
+        raise DownloadError("gh CLI not installed; cannot download from private repo")
+
+    asset_api_url = _browser_url_to_api(url)
+    if asset_api_url is None:
+        raise DownloadError(f"cannot convert to API URL: {url}")
+
     try:
-        with urllib.request.urlopen(url, timeout=20) as resp:
-            body = resp.read()
-    except urllib.error.URLError as e:
-        raise DownloadError(f"{url}: {e}") from e
+        result = subprocess.run(
+            ["gh", "api", asset_api_url, "-H", "Accept: application/octet-stream"],
+            capture_output=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        raise DownloadError(f"gh api timed out downloading {url}")
+
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace").strip()
+        raise DownloadError(f"gh api failed: {stderr}")
+
+    return result.stdout
+
+
+def _browser_url_to_api(url: str) -> str | None:
+    """Convert a GitHub release download URL to an API asset URL.
+
+    Handles both:
+      https://github.com/OWNER/REPO/releases/download/TAG/FILENAME
+      https://github.com/OWNER/REPO/releases/latest/download/FILENAME
+
+    Returns the full API URL for the asset, or None on failure.
+    """
+    import re
+    import subprocess
+
+    m = re.match(
+        r"https://github\.com/([^/]+)/([^/]+)/releases/download/([^/]+)/(.+)", url
+    )
+    if m:
+        owner, repo, tag, filename = m.groups()
+        api_path = f"repos/{owner}/{repo}/releases/tags/{tag}"
+    else:
+        m = re.match(
+            r"https://github\.com/([^/]+)/([^/]+)/releases/latest/download/(.+)", url
+        )
+        if not m:
+            return None
+        owner, repo, filename = m.groups()
+        api_path = f"repos/{owner}/{repo}/releases/latest"
+
+    try:
+        result = subprocess.run(
+            ["gh", "api", api_path,
+             "--jq", f'.assets[] | select(.name == "{filename}") | .url'],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+
+    asset_url = result.stdout.strip()
+    if not asset_url:
+        return None
+    return asset_url
+
+
+def fetch_manifest(url: str) -> dict:
+    body = _download_url(url)
     try:
         return json.loads(body)
     except json.JSONDecodeError as e:
         raise DownloadError(f"{url}: invalid JSON: {e}") from e
 
 
+def _download_url(url: str) -> bytes:
+    """Download a URL, falling back to `gh` CLI for private repos."""
+    try:
+        with urllib.request.urlopen(url, timeout=20) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as e:
+        if e.code in (404, 403):
+            return _gh_api_download(url)
+        raise DownloadError(f"{url}: {e}") from e
+    except urllib.error.URLError as e:
+        raise DownloadError(f"{url}: {e}") from e
+
+
 def download_firmware(url: str, dest: Path) -> None:
     tmp = dest.with_suffix(dest.suffix + ".part")
     try:
-        with urllib.request.urlopen(url, timeout=60) as resp, open(tmp, "wb") as out:
-            while True:
-                chunk = resp.read(64 * 1024)
-                if not chunk:
-                    break
-                out.write(chunk)
-    except urllib.error.URLError as e:
+        data = _download_url(url)
+        with open(tmp, "wb") as out:
+            out.write(data)
+    except DownloadError:
         if tmp.exists():
             tmp.unlink()
-        raise DownloadError(f"{url}: {e}") from e
+        raise
     os.replace(tmp, dest)
 
 
