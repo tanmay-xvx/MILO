@@ -1,39 +1,44 @@
-//! ESP32-C3 HAL assembly.
+//! ESP32-C3 Super Mini HAL assembly.
 //!
-//! `Esp32C3Hal` is now a thin factory that builds an `EmbeddedHalAdapter`
-//! from the concrete peripherals provided by `esp-hal`. It also owns the
-//! LIAL-Link serial transport (USB-Serial-JTAG reader + writer), which is
-//! kept distinct from the hardware abstraction: link I/O is a transport
-//! concern, not a `LialHardware` concern.
-//!
-//! Why this split matters: every future board (RP2040, STM32, ...) gets its
-//! own board module that assembles its own `EmbeddedHalAdapter`, but they all
-//! share the same `LialHardware` impl (the one in `embedded_hal_adapter.rs`).
-//! Boards differ only in pin maps and transport wiring.
+//! Peripheral map:
+//!   GPIO 5  — external LED (PWM via LEDC, falls back to gpio_set routing)
+//!   GPIO 2  — potentiometer wiper (ADC1 channel)
+//!   GPIO 8  — I2C0 SDA (SSD1306 OLED at 0x3C) — also the onboard blue LED
+//!   GPIO 9  — I2C0 SCL
 
 use crate::embedded_hal_adapter::{
-    DelayAdapter, DynDelay, EmbeddedHalAdapter, LogSink, OutputPinAdapter,
+    DelayAdapter, DynAdc, DynDelay, DynPwm, EmbeddedHalAdapter, I2cAdapter, LogSink,
 };
 use crate::LialHardware;
 use alloc::boxed::Box;
+use esp_hal::analog::adc::{Adc, AdcPin};
 use esp_hal::delay::Delay;
-use esp_hal::gpio::Output;
+use esp_hal::i2c::master::I2c;
 use esp_hal::time::Instant;
 
-/// Returns microseconds since system boot, monotonic.
 fn esp_uptime_us() -> u64 {
     Instant::now().duration_since_epoch().as_micros()
 }
 
-/// Silent log sink: on-device log messages are captured by `HostState.logs`
-/// and returned in the LIAL-Link result frame. Writing raw text to the USB
-/// JTAG here would corrupt the binary protocol.
 fn silent_log(_msg: &str) {}
 
+/// esp-hal ADC wrapper implementing `DynAdc`.
+pub struct Esp32AdcAdapter<'d> {
+    adc: Adc<'d, esp_hal::peripherals::ADC1<'d>, esp_hal::Blocking>,
+    pin: AdcPin<esp_hal::peripherals::GPIO2<'d>, esp_hal::peripherals::ADC1<'d>>,
+}
+
+impl<'d> DynAdc for Esp32AdcAdapter<'d> {
+    fn read(&mut self) -> u32 {
+        nb::block!(self.adc.read_oneshot(&mut self.pin)).unwrap_or(0) as u32
+    }
+
+    fn resolution_bits(&self) -> u8 {
+        12
+    }
+}
+
 /// ESP32-C3 hardware + link transport.
-///
-/// `W` and `R` are the UsbSerialJtag TX/RX halves. The inner `adapter` owns
-/// the LED (and anything else we register) and implements `LialHardware`.
 pub struct Esp32C3Hal<'d, W: embedded_io::Write, R: embedded_io::Read> {
     adapter: EmbeddedHalAdapter<'d>,
     writer: W,
@@ -41,12 +46,18 @@ pub struct Esp32C3Hal<'d, W: embedded_io::Write, R: embedded_io::Read> {
 }
 
 impl<'d, W: embedded_io::Write, R: embedded_io::Read> Esp32C3Hal<'d, W, R> {
-    /// Construct with a single LED pin on GPIO 5 (the only pin the reference
-    /// DevKitC-02 board has wired). Additional pins land as Phase D expands
-    /// the Alphabet.
-    pub fn new(led_pin: Output<'d>, writer: W, reader: R) -> Self {
+    pub fn new(
+        led_pwm: Box<dyn DynPwm + 'd>,
+        i2c: I2c<'d, esp_hal::Blocking>,
+        adc: Adc<'d, esp_hal::peripherals::ADC1<'d>, esp_hal::Blocking>,
+        adc_pin: AdcPin<esp_hal::peripherals::GPIO2<'d>, esp_hal::peripherals::ADC1<'d>>,
+        writer: W,
+        reader: R,
+    ) -> Self {
         let adapter = EmbeddedHalAdapter::builder()
-            .pin(5, Box::new(OutputPinAdapter(led_pin)))
+            .pwm(5, led_pwm)
+            .i2c(0, Box::new(I2cAdapter(i2c)))
+            .adc(0, Box::new(Esp32AdcAdapter { adc, pin: adc_pin }))
             .delay(Box::new(DelayAdapter(Delay::new())))
             .uptime_fn(esp_uptime_us)
             .log_sink(silent_log as LogSink)
@@ -73,15 +84,22 @@ impl<'d, W: embedded_io::Write, R: embedded_io::Read> Esp32C3Hal<'d, W, R> {
         }
     }
 
-    /// Access the inner adapter (for discovery-manifest introspection, etc.).
     pub fn adapter(&self) -> &EmbeddedHalAdapter<'d> {
         &self.adapter
+    }
+
+    pub fn adapter_mut(&mut self) -> &mut EmbeddedHalAdapter<'d> {
+        &mut self.adapter
     }
 }
 
 impl<'d, W: embedded_io::Write, R: embedded_io::Read> LialHardware for Esp32C3Hal<'d, W, R> {
     fn gpio_set(&mut self, pin: u32, state: u32) {
-        self.adapter.gpio_set(pin, state);
+        if pin == 5 {
+            self.adapter.pwm_set(5, if state != 0 { 10000 } else { 0 });
+        } else {
+            self.adapter.gpio_set(pin, state);
+        }
     }
 
     fn gpio_get(&mut self, pin: u32) -> u32 {
@@ -103,11 +121,28 @@ impl<'d, W: embedded_io::Write, R: embedded_io::Read> LialHardware for Esp32C3Ha
     fn log(&mut self, message: &str) {
         self.adapter.log(message);
     }
+
+    fn pwm_set(&mut self, channel: u32, duty_0_10000: u32) {
+        self.adapter.pwm_set(channel, duty_0_10000);
+    }
+
+    fn adc_read(&mut self, channel: u32) -> u32 {
+        self.adapter.adc_read(channel)
+    }
+
+    fn spi_transfer(&mut self, bus: u32, tx: &[u8], rx: &mut [u8]) -> i32 {
+        self.adapter.spi_transfer(bus, tx, rx)
+    }
+
+    fn uart_write(&mut self, bus: u32, data: &[u8]) -> i32 {
+        self.adapter.uart_write(bus, data)
+    }
+
+    fn uart_read(&mut self, bus: u32, buf: &mut [u8], timeout_ms: u32) -> i32 {
+        self.adapter.uart_read(bus, buf, timeout_ms)
+    }
 }
 
-/// Fallback delay that spin-waits using `esp_hal::time::Instant` -- used by
-/// code paths that want delays without the full `Delay` struct (currently
-/// unused, but kept for future sub-millisecond precision).
 pub struct InstantDelay;
 
 impl DynDelay for InstantDelay {

@@ -6,7 +6,7 @@ edition = "2024"
 [features]
 default = ["std"]
 std = ["wasmi/std", "serde_json/std"]
-esp32c3 = ["dep:esp-hal", "dep:esp-alloc", "dep:portable-atomic", "dep:esp-bootloader-esp-idf", "dep:embedded-io"]
+esp32c3 = ["dep:esp-hal", "dep:esp-alloc", "dep:portable-atomic", "dep:esp-bootloader-esp-idf", "dep:embedded-io", "dep:nb"]
 
 [dependencies]
 wasmi = { version = "1.0.9", default-features = false }
@@ -17,6 +17,7 @@ esp-hal = { version = "1.0.0", features = ["esp32c3", "unstable"], optional = tr
 esp-alloc = { version = "0.7", optional = true }
 portable-atomic = { version = "1", optional = true, default-features = false }
 embedded-io = { version = "0.6", optional = true }
+nb = { version = "1", optional = true }
 esp-bootloader-esp-idf = { version = "0.4", features = ["esp32c3"], optional = true }
 
 [patch.crates-io]

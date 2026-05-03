@@ -50,7 +50,7 @@ rustflags = [
     "-C", "link-arg=--initial-memory=65536",
     "-C", "link-arg=--max-memory=65536",
     "-C", "link-arg=-z",
-    "-C", "link-arg=stack-size=4096",
+    "-C", "link-arg=stack-size=8192",
 ]
 """
 

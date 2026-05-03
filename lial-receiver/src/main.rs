@@ -10,14 +10,21 @@ mod esp_entry {
     extern crate alloc;
     use alloc::vec;
     use esp_alloc as _;
-    use esp_hal::gpio::{Level, Output, OutputConfig};
+    use esp_hal::analog::adc::{AdcConfig, Attenuation};
+    use esp_hal::i2c::master::{Config as I2cConfig, I2c};
+    use esp_hal::gpio::DriveMode;
+    use esp_hal::ledc::channel::{self, ChannelIFace};
+    use esp_hal::ledc::timer::{self, config::Duty, TimerIFace};
+    use esp_hal::ledc::{LSGlobalClkSource, Ledc, LowSpeed};
+    use esp_hal::time::Rate;
     use esp_hal::usb_serial_jtag::UsbSerialJtag;
 
+    use lial_receiver::embedded_hal_adapter::PwmAdapter;
     use lial_receiver::esp32c3::Esp32C3Hal;
     use lial_receiver::link::{Frame, OP_BYTECODE_PUSH, OP_DISCOVERY, OP_EXEC_RESULT};
     use lial_receiver::manifest::{
-        build as build_manifest, AdcCapability, Capabilities, GpioCapability, ManifestHeader,
-        PwmCapability,
+        build as build_manifest, AdcCapability, Capabilities, GpioCapability, I2cCapability,
+        ManifestHeader, PwmCapability,
     };
     use lial_receiver::LialRuntime;
 
@@ -57,18 +64,62 @@ mod esp_entry {
         let config = esp_hal::Config::default();
         let peripherals = esp_hal::init(config);
 
-        let led = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
+        // ── LEDC PWM on GPIO 5: external LED ────────────────────────────
+        // To revert to plain GPIO, replace this block with:
+        //   use esp_hal::gpio::{Level, Output, OutputConfig};
+        //   use lial_receiver::embedded_hal_adapter::OutputPinAdapter;
+        //   let led = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
+        //   let led_pwm: alloc::boxed::Box<dyn lial_receiver::embedded_hal_adapter::DynPwm>
+        //       = alloc::boxed::Box::new(lial_receiver::embedded_hal_adapter::GpioPwmFallback(led));
+        let mut ledc = Ledc::new(peripherals.LEDC);
+        ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+
+        let mut lstimer0 = ledc.timer::<LowSpeed>(timer::Number::Timer0);
+        lstimer0
+            .configure(timer::config::Config {
+                duty: Duty::Duty10Bit,
+                clock_source: timer::LSClockSource::APBClk,
+                frequency: Rate::from_hz(5000),
+            })
+            .expect("LEDC timer config failed");
+        // Leak the timer so the channel can hold a 'static reference to it.
+        // Safe: main() -> ! never returns, so this memory is never freed.
+        let lstimer0 = alloc::boxed::Box::leak(alloc::boxed::Box::new(lstimer0));
+
+        let mut channel0 = ledc.channel(channel::Number::Channel0, peripherals.GPIO5);
+        channel0
+            .configure(channel::config::Config {
+                timer: lstimer0,
+                duty_pct: 0,
+                drive_mode: DriveMode::PushPull,
+            })
+            .expect("LEDC channel config failed");
+
+        let led_pwm: alloc::boxed::Box<dyn lial_receiver::embedded_hal_adapter::DynPwm>
+            = alloc::boxed::Box::new(PwmAdapter(channel0));
+
+        // ── I2C0: SDA=GPIO8, SCL=GPIO9 (SSD1306 OLED) ───────────────
+        let i2c = I2c::new(peripherals.I2C0, I2cConfig::default())
+            .expect("I2C init failed")
+            .with_sda(peripherals.GPIO8)
+            .with_scl(peripherals.GPIO9);
+
+        // ── ADC1: potentiometer on GPIO2, 11dB attenuation (0-3.3V) ──
+        let mut adc1_config = AdcConfig::new();
+        let adc_pin = adc1_config.enable_pin(peripherals.GPIO2, Attenuation::_11dB);
+        let adc1 = esp_hal::analog::adc::Adc::new(peripherals.ADC1, adc1_config);
+
+        // ── USB Serial JTAG ──────────────────────────────────────────
         let usb_serial = UsbSerialJtag::new(peripherals.USB_DEVICE);
         let (rx, tx) = usb_serial.split();
 
-        let mut hal = Esp32C3Hal::new(led, tx, rx);
+        // ── Assemble Hal ─────────────────────────────────────────────
+        let mut hal = Esp32C3Hal::new(led_pwm, i2c, adc1, adc_pin, tx, rx);
 
-        // Build a capability-accurate discovery manifest. Today the reference
-        // DevKitC-02 wiring exposes only GPIO 5 (LED). PWM + ADC pin lists
-        // reflect what `EmbeddedHalAdapter` *could* route if the board
-        // module registered those channels -- they are advertised with an
-        // empty `pins` array for now so the LLM doesn't hallucinate pins
-        // that aren't wired.
+        // ── I2C bus scan at boot ─────────────────────────────────────
+        let i2c_devices = hal.adapter_mut().scan_i2c_bus(0);
+
+        // ── Discovery manifest ───────────────────────────────────────
         let header = ManifestHeader {
             board: "esp32c3",
             family: "esp32",
@@ -76,31 +127,44 @@ mod esp_entry {
             ram_kb: 400,
             flash_kb: 4096,
             max_wasm_memory_kb: 64,
-            max_wasm_stack_kb: 4,
-            fuel_default: 1_000_000,
+            max_wasm_stack_kb: 8,
+            fuel_default: 500_000_000,
         };
         let caps = Capabilities {
             gpio: GpioCapability {
                 pins: alloc::vec![5],
             },
             pwm: PwmCapability {
-                pins: alloc::vec![],
+                pins: alloc::vec![5],
                 resolution_bits: 14,
             },
             adc: AdcCapability {
-                pins: alloc::vec![],
+                pins: alloc::vec![0],
                 resolution_bits: 12,
                 vref_mv: 3300,
             },
+            i2c: alloc::vec![I2cCapability {
+                bus_id: 0,
+                sda_pin: 8,
+                scl_pin: 9,
+                devices_present: i2c_devices,
+            }],
             ..Default::default()
         };
         let manifest_json = build_manifest(&header, &caps);
-        let discovery = Frame::new(OP_DISCOVERY, manifest_json.into_bytes());
-        write_frame(&mut hal, &discovery);
 
-        // Main loop: receive wasm, execute, respond
+        // ── Main loop ────────────────────────────────────────────────
+        // The host initiates all exchanges. Supported opcodes:
+        //   OP_DISCOVERY    → reply with the capability manifest
+        //   OP_BYTECODE_PUSH → execute wasm, reply with exec result
         loop {
             let frame = read_frame(&mut hal);
+
+            if frame.opcode == OP_DISCOVERY {
+                let discovery = Frame::new(OP_DISCOVERY, manifest_json.as_bytes().to_vec());
+                write_frame(&mut hal, &discovery);
+                continue;
+            }
 
             if frame.opcode != OP_BYTECODE_PUSH {
                 let err = Frame::new(
@@ -115,7 +179,7 @@ mod esp_entry {
                 continue;
             }
 
-            let mut runtime = LialRuntime::new(hal, Some(1_000_000));
+            let mut runtime = LialRuntime::new(hal, Some(500_000_000));
             let result_json = match runtime.execute(&frame.payload, "run_logic") {
                 Ok(logs) => {
                     alloc::format!(r#"{{"ok":true,"logs":{}}}"#, {
@@ -214,10 +278,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut stdin = io::stdin().lock();
         let mut stdout = io::stdout().lock();
 
-        let manifest_frame =
-            Frame::new(OP_DISCOVERY, hardware_manifest.as_bytes().to_vec());
-        link::write_frame(&mut stdout, &manifest_frame)?;
-
         loop {
             let frame = match link::read_frame(&mut stdin) {
                 Ok(f) => f,
@@ -230,9 +290,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
+            if frame.opcode == OP_DISCOVERY {
+                let manifest_frame =
+                    Frame::new(OP_DISCOVERY, hardware_manifest.as_bytes().to_vec());
+                link::write_frame(&mut stdout, &manifest_frame)?;
+                continue;
+            }
+
             if frame.opcode != OP_BYTECODE_PUSH {
                 let err_json = format!(
-                    r#"{{"error":"unexpected opcode 0x{:02x}, expected 0x02"}}"#,
+                    r#"{{"error":"unexpected opcode 0x{:02x}, expected 0x01 or 0x02"}}"#,
                     frame.opcode
                 );
                 let resp = Frame::new(OP_EXEC_RESULT, err_json.into_bytes());
