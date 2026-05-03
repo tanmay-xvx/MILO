@@ -8,8 +8,69 @@ Week 2 delivered:
 - Firmware delivery pipeline (CI binaries, `lial download`, `lial init` USB auto-detection, host auto-flash)
 - Generic `embedded-hal` adapter with dynamic pin mapping
 - Expanded Alphabet (~10-12 syscalls: GPIO, delay, uptime, I2C, SPI, PWM, ADC, UART, log)
-- Smart manifests from SVD parsing + runtime peripheral probing
-- Validation on a second board
+- Hardware-in-the-loop test harness (GPIO, ADC, PWM pass on ESP32-C3 Super Mini)
+- LEDC hardware PWM with fallback to plain GPIO
+- LLM system prompt with SSD1306 font table, memory constraints, capability-aware pin selection
+- Interactive `lial_host.py` end-to-end: natural language -> Rust Wasm -> compile -> push -> execute -> result
+
+---
+
+## Layer 3b: SVD-Driven Manifests + Auto-Discovery
+
+**Problem:** Hardware capabilities are currently hand-coded in `main.rs` for each board. Adding a new board means manually listing every pin, bus, and peripheral. SVD files already describe all of this in a machine-readable format.
+
+### SVD Parsing (Host-Side)
+
+Parse ARM CMSIS SVD (System View Description) XML files on the host to extract:
+- All GPIO pins and their alternate functions (PWM, I2C, SPI, UART, ADC)
+- Peripheral register blocks (LEDC, I2C0/1, SPI0/1/2, UART0/1, ADC1/2)
+- Memory map (RAM, flash sizes)
+
+SVD files are widely available for ESP32, STM32, nRF52, RP2040, etc.
+
+```
+svd/esp32c3.svd  -->  parse  -->  {
+  gpio: [0..21],
+  i2c: [{bus: 0, sda_options: [1,3,5,...], scl_options: [2,4,6,...]}],
+  adc: [{channel: 0, pins: [0,1,2,3,4]}, ...],
+  pwm: {channels: 6, resolution_max: 14},
+  ...
+}
+```
+
+### Auto-Discovery at Boot (Receiver-Side)
+
+Complement SVD data with runtime probing on the receiver:
+- **I2C bus scan** (already implemented -- detects SSD1306 at 0x3C, etc.)
+- **ADC self-test** (read known reference voltage)
+- **GPIO direction detection** (which pins are connected)
+
+The receiver sends the runtime probe results alongside the static SVD-derived capabilities.
+
+### Manifest Generation Pipeline
+
+```
+[SVD XML] --parse--> [static capabilities]
+                          +
+[boot-time probing] ---> [runtime discoveries]
+                          =
+                    [full manifest JSON]
+```
+
+### SVD Source Management
+
+- Ship SVD files in `svd/` directory (one per chip family)
+- `lial download --board esp32c3` also fetches the matching SVD
+- `lial init` uses SVD to generate the manifest that gets baked into firmware
+
+### Tasks
+
+| Task | Effort | Priority |
+|------|--------|----------|
+| SVD parser (Python, extract GPIO/I2C/SPI/ADC/PWM/UART) | Medium | 1 |
+| SVD file collection (ESP32-C3, RP2040, STM32F4) | Small | 1 |
+| Manifest generator from SVD output | Medium | 2 |
+| Runtime auto-discovery expansion (ADC self-test, GPIO probe) | Small | 3 |
 
 ---
 
@@ -204,6 +265,9 @@ Get the `Arc`->`Rc` / `portable-atomic` changes merged upstream into the `wasmi`
 
 | Task | Layer | Effort | Priority |
 |------|-------|--------|----------|
+| SVD parser + manifest generator | 3b | Medium | 1 (highest) |
+| SVD file collection (ESP32-C3, RP2040, STM32F4) | 3b | Small | 1 |
+| Runtime auto-discovery expansion | 3b | Small | 2 |
 | Wi-Fi transport (TCP socket) | 4 | Medium | 1 (highest) |
 | Transport abstraction trait (`LialTransport`) | 4 | Medium | 1 |
 | BLE + Wi-Fi device discovery | 4 | Medium | 2 |
@@ -223,7 +287,8 @@ Get the `Arc`->`Rc` / `portable-atomic` changes merged upstream into the `wasmi`
 
 ### Priority Order Within Week 3
 
-1. **Wi-Fi transport + transport abstraction** -- Untethers the device. Enables everything else.
+1. **SVD-driven manifests + auto-discovery** -- Eliminates hand-coded capability lists; scales to any board.
+2. **Wi-Fi transport + transport abstraction** -- Untethers the device. Enables everything else.
 2. **Bidirectional streaming + device discovery** -- Enables sensor reading and fleet visibility.
 3. **Multi-device orchestration + LLM-in-the-loop** -- The agentic loop across multiple devices.
 4. **Safety hardening** -- Whitelisting, watchdog, wasm validation.

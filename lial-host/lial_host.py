@@ -127,10 +127,131 @@ Rules:
 - Your code MUST contain exactly one function:
     #[unsafe(no_mangle)]
     pub extern "C" fn run_logic() {{ ... }}
+  IMPORTANT: Use `#[unsafe(no_mangle)]`, NOT `#[no_mangle]`. The latter will
+  not compile.
 - All syscall calls must be in `unsafe {{ }}` blocks.
 - To log a message:  let msg = b"hello"; lial_log(msg.as_ptr() as u32, msg.len() as u32);
 - Use only the syscalls listed above. No std, no alloc, no other crates.
 - Keep code minimal and correct.
+- NEVER use `cfg!(feature = ...)` or `#[cfg(...)]` to check capabilities.
+  There are no Cargo features in the Wasm driver. The `device_info` JSON
+  below already tells you what peripherals are available -- just use them
+  directly. If a peripheral is listed in `device_info`, it is available.
+- To convert a u32 number to decimal digits for display or logging, manually
+  extract each digit: `b'0' + ((value / divisor) % 10) as u8` for each
+  place value. Do NOT use format!, to_string(), or any alloc-based method.
+
+Memory constraints (CRITICAL):
+- The Wasm module has only 64 KB total memory and an 8 KB stack.
+- NEVER allocate arrays larger than ~200 bytes on the stack.
+- To clear the SSD1306 screen, clear it one page at a time (8 pages, 128 cols
+  each). For each page, send a cursor-set command, then 0x40 + 128 zero bytes
+  (129 bytes total per page). Example:
+    for page in 0..8 {{
+        let cursor: [u8; 4] = [0x00, 0xB0 | page, 0x00, 0x10];
+        lial_i2c_transfer(0x3C, cursor.as_ptr() as u32, 4, 0, 0);
+        let zeros = [0u8; 129]; // zeros[0] should actually be 0x40
+        // build: let mut row = [0u8; 129]; row[0] = 0x40;
+        lial_i2c_transfer(0x3C, row.as_ptr() as u32, 129, 0, 0);
+    }}
+  NEVER use a single 1025-byte array -- it will crash.
+
+SSD1306 OLED driver reference (use ONLY when an I2C device at 0x3C is present):
+
+CRITICAL: The SSD1306 is a GRAPHICAL display with NO built-in character set.
+Sending ASCII codes like b'A' (0x41) does NOT display the letter A. Each byte
+after the 0x40 control byte represents 8 vertical pixels in one column.
+To display a character you MUST send its 5-byte bitmap from the font table below.
+
+Protocol:
+- Commands:  prepend control byte 0x00 before command bytes.
+- Data:      prepend control byte 0x40 before pixel data bytes.
+- All transfers use lial_i2c_transfer(addr, tx_ptr, tx_len, 0, 0).
+
+Init sequence (26 bytes, send once):
+  [0x00, 0xAE, 0xD5,0x80, 0xA8,0x3F, 0xD3,0x00, 0x40,
+   0x8D,0x14, 0x20,0x00, 0xA1, 0xC8, 0xDA,0x12,
+   0x81,0xCF, 0xD9,0xF1, 0xDB,0x40, 0xA4, 0xA6, 0xAF]
+
+Set cursor to (page, col):
+  [0x00, 0xB0 | page, col & 0x0F, 0x10 | (col >> 4)]
+
+DIGIT FONT (use this EXACT array in your code for digits 0-9):
+  const DIGIT_FONT: [[u8; 5]; 10] = [
+      [0x3E,0x51,0x49,0x45,0x3E], // 0
+      [0x00,0x42,0x7F,0x40,0x00], // 1
+      [0x42,0x61,0x51,0x49,0x46], // 2
+      [0x21,0x41,0x45,0x4B,0x31], // 3
+      [0x18,0x14,0x12,0x7F,0x10], // 4
+      [0x27,0x45,0x45,0x45,0x39], // 5
+      [0x3C,0x4A,0x49,0x49,0x30], // 6
+      [0x01,0x71,0x09,0x05,0x03], // 7
+      [0x36,0x49,0x49,0x49,0x36], // 8
+      [0x06,0x49,0x49,0x29,0x1E], // 9
+  ];
+
+LETTER FONT (use for A-Z):
+  const LETTER_FONT: [[u8; 5]; 26] = [
+      [0x7E,0x11,0x11,0x11,0x7E], // A
+      [0x7F,0x49,0x49,0x49,0x36], // B
+      [0x3E,0x41,0x41,0x41,0x22], // C
+      [0x7F,0x41,0x41,0x22,0x1C], // D
+      [0x7F,0x49,0x49,0x49,0x41], // E
+      [0x7F,0x09,0x09,0x09,0x01], // F
+      [0x3E,0x41,0x49,0x49,0x7A], // G
+      [0x7F,0x08,0x08,0x08,0x7F], // H
+      [0x00,0x41,0x7F,0x41,0x00], // I
+      [0x20,0x40,0x41,0x3F,0x01], // J
+      [0x7F,0x08,0x14,0x22,0x41], // K
+      [0x7F,0x40,0x40,0x40,0x40], // L
+      [0x7F,0x02,0x0C,0x02,0x7F], // M
+      [0x7F,0x04,0x08,0x10,0x7F], // N
+      [0x3E,0x41,0x41,0x41,0x3E], // O
+      [0x7F,0x09,0x09,0x09,0x06], // P
+      [0x3E,0x41,0x51,0x21,0x5E], // Q
+      [0x7F,0x09,0x19,0x29,0x46], // R
+      [0x46,0x49,0x49,0x49,0x31], // S
+      [0x01,0x01,0x7F,0x01,0x01], // T
+      [0x3F,0x40,0x40,0x40,0x3F], // U
+      [0x1F,0x20,0x40,0x20,0x1F], // V
+      [0x3F,0x40,0x38,0x40,0x3F], // W
+      [0x63,0x14,0x08,0x14,0x63], // X
+      [0x07,0x08,0x70,0x08,0x07], // Y
+      [0x61,0x51,0x49,0x45,0x43], // Z
+  ];
+
+SPACE = [0x00,0x00,0x00,0x00,0x00]
+
+HOW TO RENDER A NUMBER (e.g. ADC value 1234) on the OLED:
+  1. Extract each digit: thousands=1, hundreds=2, tens=3, units=4
+  2. Build a buffer: [0x40, ...DIGIT_FONT[1], 0x00, ...DIGIT_FONT[2], 0x00, ...DIGIT_FONT[3], 0x00, ...DIGIT_FONT[4]]
+     That is 1 control byte + 4*(5 font bytes + 1 spacer) = 25 bytes.
+  3. Set cursor, then send the buffer.
+
+Concrete example -- display "42" at page 0, col 0:
+  let cursor: [u8; 4] = [0x00, 0xB0, 0x00, 0x10];
+  unsafe {{ lial_i2c_transfer(0x3C, cursor.as_ptr() as u32, 4, 0, 0); }}
+  let data: [u8; 13] = [
+      0x40,                           // control byte
+      0x18,0x14,0x12,0x7F,0x10, 0x00, // '4' + spacer
+      0x42,0x61,0x51,0x49,0x46, 0x00, // '2' + spacer
+  ];
+  unsafe {{ lial_i2c_transfer(0x3C, data.as_ptr() as u32, data.len() as u32, 0, 0); }}
+
+HOW TO RENDER A STRING (e.g. "DONE") on the OLED:
+  Look up each letter: D=[0x7F,0x41,0x41,0x22,0x1C], O=[0x3E,0x41,0x41,0x41,0x3E], etc.
+  Build buffer: [0x40, ...D_font, 0x00, ...O_font, 0x00, ...N_font, 0x00, ...E_font]
+  Set cursor, then send.
+
+IMPORTANT RULES:
+- NEVER send raw ASCII codes (b'0', b'A', etc.) as display data. They will show
+  as garbage. ALWAYS use the 5-byte bitmaps from DIGIT_FONT / LETTER_FONT.
+- Each rendered character is 6 columns wide (5 font + 1 spacer).
+- 128 columns / 6 = max 21 characters per line.
+- 8 pages = 8 lines. Use page 0-7.
+- To render a u32 number, extract digits with (value / divisor) % 10, then
+  index into DIGIT_FONT for each digit's 5-byte bitmap.
+- Only use uppercase letters (convert lowercase to uppercase).
 
 Device info:
 {device_info}
@@ -169,8 +290,11 @@ def _detect_port() -> str | None:
     return None
 
 
-def _try_read_discovery(ser: serial.Serial, timeout=3.0):
-    """Attempt to read a discovery frame; returns dict or None."""
+def _request_discovery(ser: serial.Serial, timeout=5.0):
+    """Send a discovery request frame and read the response; returns dict or None."""
+    req = struct.pack(">BI", OP_DISCOVERY, 0)
+    ser.write(req)
+    ser.flush()
     try:
         opcode, payload = _read_frame(ser, timeout=timeout)
         if opcode == OP_DISCOVERY:
@@ -230,7 +354,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     ser.reset_input_buffer()
 
     try:
-        manifest = _try_read_discovery(ser, timeout=3.0)
+        manifest = _request_discovery(ser, timeout=5.0)
         if manifest:
             device = manifest.get("device") or manifest.get("board") or "unknown"
             pins = manifest.get("pins") or manifest.get("capabilities", {}).get("gpio", {}).get("pins", [])
@@ -331,7 +455,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             print("  Running on device …")
 
             try:
-                opcode, payload = _read_frame(ser, timeout=30.0)
+                opcode, payload = _read_frame(ser, timeout=120.0)
                 if opcode == OP_EXEC_RESULT:
                     result = json.loads(payload)
                     if result.get("ok"):

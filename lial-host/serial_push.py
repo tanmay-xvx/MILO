@@ -62,8 +62,10 @@ def main():
     # Drain any boot messages
     ser.reset_input_buffer()
 
-    # Wait for discovery frame
-    print("Waiting for discovery frame...")
+    # Request discovery manifest
+    print("Requesting discovery manifest...")
+    ser.write(make_frame(OP_DISCOVERY, b""))
+    ser.flush()
     try:
         opcode, payload = read_frame(ser, timeout=10.0)
         if opcode == OP_DISCOVERY:
@@ -72,7 +74,7 @@ def main():
             print(f"Unexpected frame: opcode=0x{opcode:02x}, payload={payload[:100]}")
     except TimeoutError as e:
         print(f"No discovery frame received: {e}")
-        print("Device may already be past boot. Proceeding anyway...")
+        print("Device may not be running LIAL firmware. Proceeding anyway...")
 
     # Send bytecode push
     frame = make_frame(OP_BYTECODE_PUSH, wasm_bytes)
@@ -83,7 +85,7 @@ def main():
     # Wait for execution result
     print("Waiting for execution result...")
     try:
-        opcode, payload = read_frame(ser, timeout=30.0)
+        opcode, payload = read_frame(ser, timeout=120.0)
         if opcode == OP_EXEC_RESULT:
             print(f"Result: {payload.decode('utf-8', errors='replace')}")
         else:

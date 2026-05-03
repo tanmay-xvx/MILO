@@ -188,8 +188,8 @@ def _pick_family(dev: DetectedDevice, candidates: list[BoardFamily]) -> BoardFam
     return None
 
 
-def _probe_lial_firmware(port: str, timeout_s: float = 2.0) -> str | None:
-    """Briefly open the port and look for a LIAL discovery frame."""
+def _probe_lial_firmware(port: str, timeout_s: float = 3.0) -> str | None:
+    """Send a discovery request frame and check for a LIAL response."""
     try:
         import serial  # pyserial
     except ImportError:
@@ -201,6 +201,13 @@ def _probe_lial_firmware(port: str, timeout_s: float = 2.0) -> str | None:
         return None
 
     try:
+        time.sleep(0.3)
+        ser.reset_input_buffer()
+        # Send a discovery request: OP_DISCOVERY (0x01) with empty payload
+        discovery_req = struct.pack(">BI", OP_DISCOVERY, 0)
+        ser.write(discovery_req)
+        ser.flush()
+
         deadline = time.time() + timeout_s
         buf = b""
         while time.time() < deadline and len(buf) < 5:
@@ -213,7 +220,7 @@ def _probe_lial_firmware(port: str, timeout_s: float = 2.0) -> str | None:
         if opcode != OP_DISCOVERY:
             return None
         plen = struct.unpack(">I", buf[1:5])[0]
-        if plen > 4096:
+        if plen > 8192:
             return None
         payload = b""
         while time.time() < deadline and len(payload) < plen:
