@@ -5,6 +5,73 @@ Format follows a simplified [Keep a Changelog](https://keepachangelog.com/) styl
 
 ---
 
+## [Week 2 — E2E Testing + Hardware PWM + Release Pipeline] — 2026-05-04
+
+### Added
+
+- **Hardware LEDC PWM on GPIO 5** — Replaced plain GPIO toggle with esp-hal LEDC hardware PWM (10-bit resolution, 5 kHz). `gpio_set(5, ...)` routes through PWM for backward compatibility with existing Wasm drivers.
+- **ADC on GPIO 2** — Wired ADC1 channel for potentiometer reading (12-bit, 0–4095 range) via `Esp32AdcAdapter` implementing `DynAdc`.
+- **I2C on GPIO 8/9** — Connected I2C0 bus (SDA=GPIO8, SCL=GPIO9) for SSD1306 0.96" OLED display at address 0x3C.
+- **`lial_cli.py`** — Unified CLI entry point: `python lial_cli.py init`, `python lial_cli.py download`.
+- **Private repo download fallback** — `download.py` now falls back to `gh api` with authentication when plain URLs return 403/404 (private GitHub repos).
+- **`espflash` flash backend** — ESP32 backend now prefers `espflash` over `esptool` for probe (`board-info`) and flash (`write-bin` for .bin, `flash` for ELF). Falls back to `esptool` when `espflash` is unavailable.
+- **Beta release `v0.1.0-beta`** — First GitHub release with merged ESP32-C3 firmware binary and `manifest.json` for `lial init` distribution.
+- **LLM system prompt hardening**:
+  - Complete SSD1306 font tables (digits 0–9, letters A–Z) as 5-byte bitmaps.
+  - Memory constraint warnings (64 KB total, 8 KB stack, max ~200 byte stack arrays).
+  - Page-by-page OLED clearing to prevent stack overflow.
+  - Ban on `cfg!()` macros (not available in Wasm drivers).
+  - Manual integer-to-digit conversion guidance (no `format!` / `to_string!`).
+  - `#[unsafe(no_mangle)]` syntax enforcement.
+- **Week 3 plan Layer 3b** — SVD-driven manifest generation and enhanced auto-discovery.
+
+### Changed
+
+- **Wasm stack size** — Increased from 4 KB to 8 KB in `lial_compiler.py` to support OLED font rendering.
+- **Execution timeout** — Increased from 30s to 120s in `lial_host.py`.
+- **Fuel budget** — Increased from 50M to 500M in receiver `main.rs`.
+- **Discovery protocol** — Host now sends an active discovery request frame instead of passively waiting for the receiver to broadcast.
+- **Manifest URL** — Default points to `tanmay-xvx/LIAL` repo with `v0.1.0-beta` tag.
+- **Firmware image** — Release binary is now a merged image (`espflash save-image --merge`) including bootloader + partition table + app, flashable at offset 0x0.
+- **`release-manifest.json`** — Updated size/sha256 for merged image.
+
+### Fixed
+
+- **OLED display garbage** — LLM was sending raw ASCII codes instead of 5-byte font bitmaps. Fixed by adding complete font tables and rendering examples to the system prompt.
+- **Wasm OOB crash** — 1025-byte `clear_screen` array caused stack overflow. Fixed by increasing stack to 8 KB and enforcing page-by-page clearing in the prompt.
+- **Fuel exhaustion** — Complex OLED tasks exceeded 50M fuel. Increased to 500M.
+- **`cfg!()` in Wasm** — LLM generated `cfg!(feature = "adc")` checks that don't exist in Wasm drivers. Prompt now explicitly bans `cfg!` and directs the LLM to use `device_info` JSON.
+- **LED flickering at high PWM duty** — Changed LEDC from 14-bit/1 kHz to 10-bit/5 kHz for stable output.
+- **`esptool` post-flash boot failure** — USB JTAG devices weren't resetting after `esptool write_flash`. Fixed by preferring `espflash` which handles reset correctly.
+- **Private repo 404** — `lial init` couldn't download firmware from private repos. Added `gh api` fallback with token auth.
+
+### Hardware Validated
+
+- ESP32-C3 Super Mini (OceanLabz, silicon rev v0.4), USB JTAG at `/dev/cu.usbmodem3101`.
+- Breadboard rig:
+  - External LED + 330 Ω on GPIO 5 (PWM brightness control).
+  - 10 kΩ potentiometer wiper on GPIO 2 (ADC, 12-bit).
+  - SSD1306 0.96" OLED on I2C0 (GPIO 8 SDA, GPIO 9 SCL, address 0x3C).
+  - 4.7 kΩ pull-ups on SDA/SCL (built into OLED module).
+
+### HIL Test Results
+
+| Test | Status |
+|------|--------|
+| GPIO (blink pin 5) | Pass |
+| ADC (potentiometer read) | Pass |
+| PWM (LED brightness) | Pass |
+| I2C / OLED (text rendering) | Pass |
+| UART (loopback) | Skip (no jumper wired) |
+
+---
+
+## [Week 2 — Board-Agnostic Receiver + Firmware Delivery] — 2026-03-19
+
+See `docs/week2/changelog.md` for full details.
+
+---
+
 ## [Week 1 — ESP32-C3 End-to-End] — 2026-03-15
 
 ### Added

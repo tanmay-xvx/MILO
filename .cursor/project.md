@@ -2,7 +2,7 @@
 
 **Project Manifesto & Technical Specification v1.0**
 
-**Version:** 0.1.0-Alpha | **Status:** Active Development (3-Week POC)
+**Version:** 0.1.0-Beta | **Status:** Active Development (Week 3)
 
 LIAL (pronounced "Lyle") is a high-performance, ultra-lightweight hardware abstraction layer designed to turn any silicon — from a $2 ESP32 to a sophisticated industrial PLC — into a native, programmable extension of an LLM's reasoning engine.
 
@@ -79,8 +79,13 @@ A restricted set of hardware primitives exposed to the Wasm sandbox. The LLM com
 | GPIO | `lial_gpio_get` | `(pin: u32) -> u32` |
 | Timing | `lial_delay_ms` | `(ms: u32)` |
 | Timing | `lial_get_uptime_us` | `() -> u64` |
-| I2C Bus | `lial_i2c_transfer` | `(addr: u8, tx_buf: *u8, tx_len: u32, rx_buf: *u8, rx_len: u32) -> i32` |
-| Logging | `lial_log` | `(message: *const char)` |
+| I2C Bus | `lial_i2c_transfer` | `(addr, tx_ptr, tx_len, rx_ptr, rx_len) -> i32` |
+| PWM | `lial_pwm_set` | `(channel: u32, duty: u32)` — duty 0–10000 |
+| ADC | `lial_adc_read` | `(channel: u32) -> u32` — 12-bit, 0–4095 |
+| SPI Bus | `lial_spi_transfer` | `(bus, tx_ptr, tx_len, rx_ptr, rx_len) -> i32` |
+| UART | `lial_uart_write` | `(bus: u32, ptr: u32, len: u32) -> i32` |
+| UART | `lial_uart_read` | `(bus, ptr, len, timeout_ms) -> i32` |
+| Logging | `lial_log` | `(ptr: u32, len: u32)` |
 
 The alphabet must stay **under 15 functions** to ensure portability across all targets.
 
@@ -156,9 +161,27 @@ pub trait LialHardware {
 
 **Phase 2 (Week 2):** A single generic `EmbeddedHalAdapter<P, D, I>` that accepts any board's `embedded-hal`-compatible peripherals (`OutputPin`, `InputPin`, `DelayNs`, `I2c`). Adding a new board requires zero LIAL code changes -- just instantiate the adapter with the board's HAL.
 
-## 10. Development Tracking
+## 10. Current State (as of v0.1.0-beta)
 
-Weekly action plans, changelogs, and status are maintained in `docs/weekN/`. See the current week's `actionPlan.md` for the active plan.
+- **11 syscalls** running end-to-end on ESP32-C3 Super Mini.
+- **Hardware LEDC PWM** (10-bit, 5 kHz) on GPIO 5 with GPIO fallback.
+- **ADC** (12-bit) on GPIO 2 for potentiometer reading.
+- **I2C** master on GPIO 8/9 driving SSD1306 OLED with bitmap font rendering.
+- **`lial init`** auto-detects boards by VID/PID, downloads firmware from
+  GitHub releases (with `gh api` fallback for private repos), flashes via
+  `espflash` (preferred) or `esptool`.
+- **`v0.1.0-beta`** GitHub release with merged ESP32-C3 firmware binary.
+- **LLM system prompt** includes complete SSD1306 font tables, memory
+  constraints, and capability-aware peripheral selection.
+- **HIL tests** pass for GPIO, ADC, PWM, I2C on real hardware.
+- **Board-agnostic `EmbeddedHalAdapter`** with object-safe dynamic dispatch
+  (`DynPwm`, `DynAdc`, `DynI2c`, `DynSpi`, `DynUart`, `DynDelay`).
+- **Wasm constraints**: 64 KB memory, 8 KB stack, 500M fuel budget.
 
-- `docs/week1/` -- Receiver library, Serial transport, JIT compiler, Host orchestrator, ESP32-C3 deployment
-- `docs/week2/` -- Generic `embedded-hal` adapter, SVD manifest auto-generation, CBOR serialization, multi-device support
+## 11. Development Tracking
+
+Weekly action plans, changelogs, and status are maintained in `docs/weekN/`.
+
+- `docs/week1/` — Receiver library, serial transport, JIT compiler, ESP32-C3 deployment
+- `docs/week2/` — Board-agnostic adapter, firmware delivery, E2E hardware testing, LEDC PWM, release pipeline
+- `docs/week3/` — SVD-driven manifests, auto-discovery, Wi-Fi transport, multi-device orchestration
