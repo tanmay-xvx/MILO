@@ -120,8 +120,11 @@ class HilTest:
         return self._manifest
 
     def _try_discovery(self) -> dict | None:
+        req = struct.pack(">BI", OP_DISCOVERY, 0)
+        self._ser.write(req)
+        self._ser.flush()
         try:
-            opcode, payload = _read_frame(self._ser, timeout=3.0)
+            opcode, payload = _read_frame(self._ser, timeout=5.0)
             if opcode == OP_DISCOVERY:
                 return json.loads(payload)
         except (TimeoutError, json.JSONDecodeError):

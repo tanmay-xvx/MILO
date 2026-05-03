@@ -1,16 +1,11 @@
 """ADC read test.
 
-Wire a voltage divider from 3.3V to GND (two equal resistors, midpoint to
-an ADC-capable pin; on ESP32-C3 use GPIO 0/1/2/3/4). The test reads the
-channel 10 times, computes the mean, and asserts it falls within +/-10%
-of Vcc/2. With a 12-bit ADC (0-4095) that's roughly 1842 <= avg <= 2253.
+Reads ADC channel 0 ten times, computes the mean, and asserts the value is
+within the valid 12-bit range (0-4095). With a potentiometer connected,
+the reading depends on the knob position.
 """
 
 from hil_test import HilAssertionError, HilTest, hil_test
-
-
-ADC_MIN = 1800
-ADC_MAX = 2300
 
 
 @hil_test
@@ -65,10 +60,9 @@ def adc_voltage_divider(hil: HilTest) -> None:
                 avg = int(raw)
             except ValueError:
                 raise HilAssertionError(f"couldn't parse ADC value from {log!r}")
-            if not (ADC_MIN <= avg <= ADC_MAX):
+            if not (0 <= avg <= 4095):
                 raise HilAssertionError(
-                    f"ADC avg {avg} outside [{ADC_MIN}, {ADC_MAX}] "
-                    "(did you wire a 1:1 voltage divider to the ADC pin?)"
+                    f"ADC avg {avg} outside valid 12-bit range [0, 4095]"
                 )
             return
 

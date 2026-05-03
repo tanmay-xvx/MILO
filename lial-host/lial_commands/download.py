@@ -22,7 +22,7 @@ from pathlib import Path
 
 DEFAULT_MANIFEST_URL = os.environ.get(
     "LIAL_MANIFEST_URL",
-    "https://github.com/tanmaysrivastava/LIAL/releases/latest/download/manifest.json",
+    "https://github.com/tanmay-xvx/LIAL/releases/latest/download/manifest.json",
 )
 
 DEFAULT_CACHE_DIR = Path(os.environ.get("LIAL_FIRMWARE_DIR", "./firmware"))

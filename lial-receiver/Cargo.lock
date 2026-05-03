@@ -747,6 +747,7 @@ dependencies = [
  "esp-alloc",
  "esp-bootloader-esp-idf",
  "esp-hal",
+ "nb 1.1.0",
  "portable-atomic",
  "serde_json",
  "wasmi",
