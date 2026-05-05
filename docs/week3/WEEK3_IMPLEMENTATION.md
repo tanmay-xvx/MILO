@@ -1,186 +1,216 @@
-# Week 3 — Implementation Record
+# Week 3 — Implementation record and plan validation
 
-This document is the technical companion to the Week 3 pull request. It describes **what shipped**, **why**, and **how to reproduce** builds and hardware tests. It is written for reviewers and future maintainers.
+This document serves two purposes:
 
-## Goals (from Week 3 planning)
+1. **Technical record** — what was built, how, and how to reproduce it.
+2. **Plan validation** — mapping every phase of the **Week 3 Phased Build** plan to the codebase, with an honest **done / partial / not done** status.
 
-Week 3 broadened LIAL beyond the ESP32-C3 reference board:
+The canonical phased plan referenced here is:
 
-1. **Second silicon family** — Prove the same Wasm + syscall model on **Raspberry Pi Pico (RP2040)** (`thumbv6m-none-eabi`).
-2. **Transport abstraction** — Decouple LIAL-Link framing from any single physical link (USB serial today; TCP / future BLE).
-3. **Execution model groundwork** — Introduce a **`LialExecutor`** abstraction so single-core (blocking) and dual-core strategies can coexist.
-4. **Wireless and tooling scaffolding** — Wi-Fi transport hooks on ESP32, **mDNS discovery** stubs, **device registry**, and an **MCP server** skeleton for agent-facing workflows.
-5. **Protocol surface** — Reserve **opcodes 0x04–0x09** for streaming, stop, status, parameters, and hot-swap (receiver handling may be partial; host and docs align on names).
-6. **Research and context** — Captured flashing methods, multi-core patterns, and competitive notes in `research.md` and `context.md`.
-
-## 1. Raspberry Pi Pico (RP2040) receiver
-
-### 1.1 Feature flag and build
-
-The receiver crate gains a Cargo feature **`rp2040`** that pulls in:
-
-- `rp2040-hal`, `rp2040-boot2`, `cortex-m`, `cortex-m-rt`
-- `embedded-alloc` (linked-list first-fit heap)
-- `usb-device`, `usbd-serial` (USB CDC to the host)
-- `portable-atomic` (required by the dependency graph on Cortex-M0+)
-- `embedded-hal` 0.2 as **`embedded-hal-0-2`** (for `Adc::read` / `OneShot` on the RP2040 ADC path)
-
-**Important:** firmware for embedded targets must **not** enable the crate’s default `std` feature (which turns on `wasmi/std` and breaks `thumbv6m-none-eabi`). Build with:
-
-```bash
-cd lial-receiver
-cargo build --release --no-default-features --features rp2040 --target thumbv6m-none-eabi
-```
-
-`elf2uf2-rs` is configured as the **runner** in `.cargo/config.toml` for `thumbv6m-none-eabi`. A **custom `memory.x`** is used so linking matches the Pico’s RAM layout when using `build-std`.
-
-### 1.2 Boot and memory
-
-- **`rp2040-boot2`**: the standard W25Q080 second-stage bootloader is linked via `#[unsafe(link_section = ".boot2")]`.
-- **Heap**: a static `LlffHeap` backs `alloc` (Vec, String, Box) for manifest JSON and framing buffers on the Pico path.
-
-### 1.3 Pinout and discovery manifest (reference wiring)
-
-| Function | GPIO | Notes |
-|----------|------|--------|
-| Onboard LED | 25 | Digital output via `lial_gpio_set` |
-| I2C0 SDA | 4 | SSD1306 (typ. `0x3C`) — external pull-ups as usual |
-| I2C0 SCL | 5 | |
-| ADC (pot) | 26 | Registered as **ADC channel `26`** in the manifest so drivers use `lial_adc_read(26)` |
-
-The discovery manifest identifies the board as **`rp2040-pico`** and lists **I2C `0x3C`** without relying on a boot-time I2C scan (see §1.6).
-
-### 1.4 USB CDC transport and large frames
-
-The Pico talks LIAL-Link over **USB CDC serial** (not UART-to-USB adapter). Practical issues addressed:
-
-- **Chunked writes (`usb_write_all`)**: A single logical frame (especially the JSON discovery response) can exceed one USB packet. Writes loop until all bytes are accepted, **polling `usb_dev`** between chunks so the stack can transmit.
-- **Post-open delay and discovery retries (host)**: After opening the serial port, the host waits **1 s** and clears RX buffers; `request_discovery` retries **3×** with backoff to avoid races with USB enumeration.
-- **USB during Wasm delays**: While Wasm runs, `lial_delay_ms` must still **poll USB**. Otherwise the CDC connection can stall or drop from the host’s perspective. The firmware registers a **temporary poll callback** (`rp2040::set_usb_poll` / `clear_usb_poll`) around `LialRuntime::execute` so delays keep the device connected.
-
-### 1.5 `Rp2040Hal` (`rp2040.rs`)
-
-- Implements **`LialHardware`** using the same dynamic peripheral pattern as ESP32 (`DynGpio`, `DynI2c`, `DynDelay`, etc.).
-- **ADC**: `Rp2040AdcChannel` bundles `Adc` + `AdcPin` and implements **`DynAdc`** using `embedded_hal_0_2::adc::OneShot`.
-- **Delay**: Timer-backed microseconds, with periodic USB poll when a callback is registered.
-- **I2C reliability (`RecoveringI2c`)**:
-  - I2C runs at **100 kHz** (reduced from 400 kHz for marginal wiring / SSD1306 robustness).
-  - On transfer failure, **`i2c_bus_recover`** bit-bangs SCL/SDA via SIO to release a stuck slave, restores I2C pin functions, clears abort state, and briefly toggles `ic_enable` to flush FIFOs **without** re-hacking timing registers (an earlier approach reset the peripheral with mismatched 100 kHz vs “fast” mode and caused alternating success/failure).
-  - **`RecoveringI2c`** retries the transfer once after recovery.
-
-### 1.6 SSD1306 and “static noise” (LLM-generated drivers)
-
-Symptom: I2C **succeeds** but the OLED shows **snow** across the panel.
-
-**Cause:** SSD1306 GDDRAM is **undefined at power-on**. Wasm that only paints a few columns on page 0 leaves the rest of the framebuffer random — visually “noise.”
-
-**Mitigations:**
-
-- Host **system prompt** (`lial_host.py`): After the 26-byte init, the model is instructed to **clear all 8 pages** (129 bytes per page: `0x40` + 128 zeros) within stack limits, and to redraw responsibly in loops.
-- Firmware: **No boot-time I2C scan** on Pico for the OLED path — scanning some displays can put them in an odd state; the manifest instead documents **`0x3C`**.
-
-### 1.7 ESP32-C3 unchanged path
-
-The existing `esp32c3` module and `esp_hal` entry remain the primary reference; minor edits may appear for shared types or transport Wi-Fi module gating. The **shared `main_loop`** in `lib.rs` still drives ESP32-style transports that implement `transport::LialTransport`.
-
-## 2. Shared receiver architecture
-
-### 2.1 `main_loop` + `LialExecutor`
-
-`lib.rs` exposes **`main_loop`** for boards whose transport implements **`transport::LialTransport`** (e.g. ESP32 with `EmbeddedIoTransport`). It uses:
-
-- **`SingleCoreExecutor`** (`executor.rs`) — constructs `LialRuntime`, runs Wasm, returns JSON result.
-- **`PARAM_SLOTS`** — atomic `u32` slots for future `OP_SET_PARAM` / `lial_get_param` wiring.
-
-### 2.2 Dual-core placeholder (`executor_dual.rs`)
-
-**`DualCoreExecutor` / `LialExecutor` trait** sketch how Core 0 could service the link while Core 1 runs Wasm. The Pico **entry** currently uses a **dedicated USB loop** and direct `LialRuntime` invocation (simpler and sufficient for bring-up); the executor split remains available for RP2040 `multicore` integration later.
-
-### 2.3 `transport.rs` (no_std)
-
-Board-side framing helpers and `LialTransport` trait for `embedded-io` streams remain the single source of frame layout **[opcode u8][len u32 BE][payload]**.
-
-### 2.4 `transport_wifi.rs` (ESP32, feature-gated)
-
-Wi-Fi / TCP scaffolding for **unplugged** operation lives behind **`esp32c3-wifi`** (optional feature). It is not required for Pico bring-up.
-
-### 2.5 `validation.rs`
-
-Hooks for stricter Wasm module checks (for example constraints aligned with Week 3 safety goals) — integrate with the executor path as hardening matures.
-
-### 2.6 `link.rs` opcode constants
-
-Extended constants for future control plane messages:
-
-- `0x04` `OP_STREAM_DATA`
-- `0x05` `OP_STOP`
-- `0x06` `OP_QUERY_STATUS`
-- `0x07` `OP_STATUS_RESPONSE`
-- `0x08` `OP_SET_PARAM`
-- `0x09` `OP_HOT_SWAP`
-
-Receiver dispatch for every opcode is not assumed complete; names are shared between Rust and Python.
-
-### 2.7 `embedded_hal_adapter.rs`
-
-Shared adapter logic; I2C scan behavior may differ per board (Pico manifest avoids scan; ESP32 may still scan).
-
-## 3. Python host
-
-### 3.1 `transport.py`
-
-- **`LialTransport`** ABC: `read_frame`, `write_frame`, `close`, `is_connected`.
-- **`SerialTransport`**: `pyserial`, 1 s settle time, `request_discovery` with retries, `push_bytecode`.
-- **`TcpTransport`**: framing for future Wi-Fi receivers.
-- Opcode constants match `link.rs`.
-
-### 3.2 `lial_host.py`
-
-- Imports transports from **`transport`** instead of inlining serial logic.
-- **`SYSTEM_PROMPT`** enriched for SSD1306: init sequence, **mandatory full clear**, digit/letter fonts, bitmap-only rendering rules.
-- Relaxed wording: if the user names a device (e.g. SSD1306), use known **0x3C** even when `devices_present` is empty (Pico).
-
-### 3.3 Device orchestration and MCP (scaffolding)
-
-| Module | Role |
-|--------|------|
-| `device_registry.py` | Named devices → transport + manifest |
-| `lial_device.py` | Thin wrapper: push Wasm, query capabilities |
-| `discovery.py` | **mDNS** discovery for `_lial._tcp.local.` (requires `zeroconf`; stub BLE hook) |
-| `mcp_server.py` | MCP tool stubs: list devices, push, stop, query, set param, hot-swap |
-
-These align with the Week 3 theme: **agents** and **multi-device** workflows without locking LIAL to one IDE or one transport.
-
-## 4. Examples
-
-- **`examples/test_drivers/blink_led`**: GPIO **25** for Pico onboard LED (was a different pin for ESP32).
-
-## 5. Documentation artifacts
-
-| File | Purpose |
-|------|---------|
-| `docs/week3/plan.md` | Phased Week 3 plan (reference; may evolve after review) |
-| `docs/week3/research.md` | Flashing, USB vs UART, OTA, multi-core, LIAL vs ESP-Claw notes |
-| `docs/week3/context.md` | Snapshot of pre–Week 3 repo state and file map |
-
-## 6. Verified hardware scenarios (reported)
-
-On **Pico** with this branch:
-
-- Discovery returns **`rp2040-pico`** and gpio **`[25]`**.
-- **Blink** onboard LED via generated Wasm.
-- **ADC** on **GPIO 26** / channel **26** with live updates.
-- **SSD1306** on I2C0 (`SDA=4`, `SCL=5`): stable display after init + **full clear** + bitmap digits.
-
-Flashing: **`picotool load`** of the built ELF/UF2 is more reliable than drag-drop on some macOS setups.
-
-## 7. Known follow-ups
-
-- Wire **`DualCoreExecutor`** to RP2040 `multicore` and a mailbox for **non-blocking** runs.
-- Implement full receiver-side handling for **opcodes 0x04–0x09** where not already present.
-- Harden **`validation.rs`** and connect to push path.
-- Publish UF2/bin artifacts via release workflow (build artifacts are **gitignored**: `*.uf2`).
+- **Cursor plan:** `.cursor/plans/week_3_phased_build_3ae58fd8.plan.md` (5 phases + dependency graph + file/dependency tables).
+- **Repo copy / narrative:** `docs/week3/plan.md` (may differ in wording; use the Cursor plan for todo IDs).
 
 ---
 
-*Last updated: Week 3 PR preparation — implementation summary for reviewers.*
+## Executive summary
+
+| Phase | Theme | Plan intent | Overall status |
+|-------|--------|-------------|----------------|
+| **1** | Transport abstraction | Pluggable LIAL-Link I/O on host + receiver | **Done** (with intentional file layout differences) |
+| **2** | Raspberry Pi Pico | wasmi + `Rp2040Hal` + USB serial end-to-end | **Done** (Pico uses a dedicated loop instead of shared `main_loop`) |
+| **3** | WiFi transport | TCP + mDNS, wireless push | **Partial** (host CLI + discovery + TCP client; receiver WiFi transport is a **stub**) |
+| **4** | Extended protocol + dual-core | Opcodes 0x04–0x09, executor, params, Core 0/1 split | **Partial** (ESP32 `main_loop`: most control opcodes + validation + `lial_get_param`; **Pico: no extended opcodes in USB loop**; dual-core **not** driving Core 1) |
+| **5** | Multi-device, MCP, safety | Registry, MCP, validation, watchdog, whitelist | **Partial** (registry + MCP scaffold + **import validation** on ESP path; multi-device LLM routing / parallel asyncio / watchdog kick **incomplete or missing**) |
+
+---
+
+## Phase 1: Transport abstraction (foundation)
+
+**Plan goal:** Decouple transport from hardware; same framing over pluggable links.
+
+### Plan checklist vs implementation
+
+| Plan item | Status | How it was done |
+|-----------|--------|-----------------|
+| Define `LialTransport` on receiver | **Done** | Trait lives in `lial-receiver/src/transport.rs` (not `link.rs`). Methods: `read_frame` / `write_frame` returning `Result<Frame, LinkError>`, matching the plan’s intent. |
+| Extract USB serial into dedicated struct | **Done** | `EmbeddedIoTransport<W, R>` wraps any `embedded_io::Read` + `Write` pair. ESP32 uses it with USB Serial JTAG `split()`. Plan named `UsbSerialTransport`; same role. |
+| Separate `Esp32C3Hal` from transport | **Done** | `main.rs` `esp_entry`: `let mut transport = EmbeddedIoTransport::new(tx, rx);` and `let mut hal = Esp32C3Hal::new(...)`. HAL no longer owns the link. |
+| Refactor `main_loop` to `main_loop<T: LialTransport, H: LialHardware>` | **Done** | `lial-receiver/src/lib.rs`: `pub fn main_loop<T: transport::LialTransport, H: LialHardware + 'static>(...)`. ESP32 entry calls `lial_receiver::main_loop(&mut transport, hal, &manifest_json)`. |
+| `StdioTransport` (std feature) | **Done** | `transport.rs`, `#[cfg(feature = "std")]`, laptop/mock path in `main.rs`. |
+| Host `transport.py` ABC | **Done** | `lial-host/transport.py`: `LialTransport`, `SerialTransport`, `TcpTransport`, opcode constants aligned with `link.rs`. |
+| Move serial framing out of `lial_host.py` | **Done** | `lial_host.py` imports `SerialTransport`, `TcpTransport`, `LialTransport`; `_open_transport()` selects serial vs WiFi. |
+| **Deliverable:** ESP build unchanged for users | **Done** | `--features esp32c3` path still uses shared `main_loop` + `EmbeddedIoTransport`. |
+
+**Deviations from plan file names:** The plan listed `transport_usb.rs` and a separate `transport_tcp.py`. The repo uses **`transport.rs`** (receiver) and **`TcpTransport` inside `transport.py`** (host). Behavior matches the plan; only file boundaries differ.
+
+---
+
+## Phase 2: Raspberry Pi Pico port
+
+**Plan goal:** wasmi + LIAL on RP2040; Wasm blink on real hardware; same host over USB serial.
+
+### Plan checklist vs implementation
+
+| Plan item | Status | How it was done |
+|-----------|--------|-----------------|
+| **2a** `rp2040` feature in `Cargo.toml` | **Done** | Feature includes `rp2040-hal`, `rp2040-boot2`, `cortex-m`, `cortex-m-rt`, `embedded-alloc`, `usb-device`, `usbd-serial`, `portable-atomic`, `embedded-hal-0-2` (ADC `OneShot`). |
+| **2a** `thumbv6m-none-eabi` + `build-std` | **Done** | `lial-receiver/.cargo/config.toml`: `[target.thumbv6m-none-eabi]` rustflags + `build-std = ["core", "alloc"]` under `[unstable]`. **`memory.x`** added for link script. |
+| **2a** wasmi on M0+ | **Done** | Build with **`cargo build --release --no-default-features --features rp2040 --target thumbv6m-none-eabi`** so `wasmi/std` is not enabled. Patches under `patches/` still apply where needed for the dependency graph. |
+| **2b** `Rp2040Hal` (`rp2040.rs`) | **Done** | Same `EmbeddedHalAdapter` pattern as ESP32: GPIO 25, I2C0 on GP4/GP5, ADC on GP26; **`RecoveringI2c`** + bus recovery; timer-based delay with optional USB poll. |
+| **2b** `transport_usb_pico.rs` | **Not as specified** | No separate file. **USB CDC** framing is implemented **inline** in `main.rs` (`pico_entry`): read buffer accumulation, frame parse, `usb_write_all` for chunked TX. Functionally equivalent to a dedicated module; refactor possible later. |
+| **2c** Pico `main` entry | **Done** | `#[cfg(feature = "rp2040")] mod pico_entry`: `cortex_m_rt::entry`, `embedded_alloc` heap, clocks, pins, I2C @ 100 kHz, ADC, USB CDC + `usbd-serial`. |
+| **2c** Call `main_loop(transport, hal)` | **Partial** | Pico does **not** use `lib::main_loop`. It uses a **local infinite loop** (USB poll, discovery, bytecode dispatch) so **`usb_write_all`**, **chunked discovery responses**, and **USB poll during `lial_delay_ms`** can be wired without changing the generic `LialTransport` trait for embedded USB. ESP32 keeps the shared `main_loop`. |
+| **2d** Blink Wasm test | **Done** (reported) | Onboard LED GPIO **25**; example `examples/test_drivers/blink_led` updated. Host `lial_host.py run --port ...` works over CDC. |
+| **2d** HIL on Pico (`hil_test.py`) | **Not verified in this doc** | Plan called for wiring HIL against Pico; confirm separately in CI or manual HIL docs. |
+| **Deliverable:** same host, no `LialRuntime`/`LialHardware` change | **Done** | Syscall surface unchanged; drivers stay `wasm32-unknown-unknown`. |
+
+**Extra work (not in short plan text but required for real bring-up):** Boot2 section, USB enumeration race mitigation (host 1 s settle + discovery retries), I2C robustness (no SSD1306 probe at boot on Pico, hard-coded `0x3C` in manifest), OLED prompt updates (full GDDRAM clear after init).
+
+---
+
+## Phase 3: WiFi transport (ESP32-C3 wireless)
+
+**Plan goal:** LIAL-Link over TCP; mDNS; host `--transport wifi`.
+
+### Plan checklist vs implementation
+
+| Plan item | Status | How it was done |
+|-----------|--------|-----------------|
+| WiFi init in ESP `esp_entry` | **Not done** | No WiFi/AP join in the main ESP entry path in-repo as a default build. |
+| `transport_wifi.rs` / TCP server :9100 | **Partial** | **`lial-receiver/src/transport_wifi.rs`** exists behind feature **`esp32c3-wifi`**. `WifiTcpTransport::read_frame` / `write_frame` return **placeholder errors** (“wifi transport not yet active”). **Not production TCP.** |
+| Receiver mDNS `_lial._tcp.local` | **Not done** | Not implemented on device. |
+| Dual-transport (WiFi + USB) | **Not done** | — |
+| Host `TcpTransport` | **Done** | In **`lial-host/transport.py`** (plan suggested `transport_tcp.py`). |
+| Host mDNS discovery | **Partial** | **`lial-host/discovery.py`**: `discover_mdns()` using `zeroconf` for `_lial._tcp.local.` when installed. Useful when a **real** receiver advertises; today the receiver does not advertise. |
+| `lial_host.py --transport wifi` / `--ip` | **Done** | `_open_transport()`: `--transport wifi`, optional `--ip`, else mDNS; `--tcp-port` default 9100. |
+| **Deliverable:** push Wasm over WiFi | **Not met end-to-end** | Requires completing `WifiTcpTransport` + `esp-wifi` / socket polling in `main` and mDNS on device. |
+
+---
+
+## Phase 4: Extended control protocol + dual-core
+
+**Plan goal:** Opcodes 0x04–0x09, `LialExecutor`, parameter slots, optional Core 1 Wasm on Pico, host `LialDevice` API.
+
+### Opcodes and executor (receiver)
+
+| Plan item | Status | How it was done |
+|-----------|--------|-----------------|
+| Constants `OP_STREAM_DATA` … `OP_HOT_SWAP` in `link.rs` | **Done** | `lial-receiver/src/link.rs` and `lial-host/transport.py` aligned. |
+| `LialExecutor` + `SingleCoreExecutor` | **Done** | `lial-receiver/src/executor.rs`: `submit`, `poll_result`, `is_running`, `stop`, `status`; `SingleCoreExecutor` runs Wasm **inline** (same as pre-planned behavior). |
+| `PARAM_SLOTS` + `lial_get_param` | **Done** | `executor.rs`: `AtomicU32` slots; **`lib.rs`** registers **`lial_get_param`** in the Wasm linker. |
+| `main_loop` handles stop / query / set param / hot-swap | **Done** | `lib.rs` `main_loop`: **`OP_STOP`**, **`OP_QUERY_STATUS`**, **`OP_SET_PARAM`** (8-byte BE payload), **`OP_HOT_SWAP`** (after validation). **`OP_STREAM_DATA`**: no dedicated branch → falls through to **unknown opcode** JSON error. |
+| Wasm validation before execute / hot-swap | **Done (ESP path)** | `validation::validate_wasm_imports` on **`OP_BYTECODE_PUSH`** and **`OP_HOT_SWAP`** inside **`main_loop`**. Parses Wasm import section; only **Alphabet** names allowed (includes `lial_get_param`). |
+| **Pico path:** extended opcodes + validation | **Not done** | Pico `pico_entry` handles **discovery** and **bytecode push** only; **no** `validate_wasm_imports` call before `LialRuntime::execute`. Extended opcodes **not** dispatched on USB loop. |
+| `DualCoreExecutor` (Core 0 link, Core 1 Wasm) | **Partial** | **`lial-receiver/src/executor_dual.rs`**: structure and **`LialExecutor`** impl exist; **`core1_available`** path falls back to **single-core** execution; Core 1 FIFO/spawn **not** integrated in `main.rs`. |
+| **Deliverable:** Pico transport Core 0, Wasm Core 1 | **Not met** | Pico still runs transport + Wasm on the same core (with USB polling in delay). |
+
+### Host `LialDevice` (plan: async)
+
+| Plan item | Status | How it was done |
+|-----------|--------|-----------------|
+| `lial_device.py` with `push`, `stop`, `query_status`, `set_param`, hot-swap | **Done** | Synchronous wrapper over `LialTransport` (plan said “async class”; implementation is **sync** + optional `asyncio` usage elsewhere). |
+| `stream_subscribe` / streaming | **Partial** | `OP_STREAM_DATA` exists as constant; **no** full streaming protocol loop wired on device + host in a documented way. |
+
+---
+
+## Phase 5: Multi-device, MCP, safety
+
+**Plan goal:** Device registry, MCP tools, Wasm validation, peripheral whitelist, watchdog.
+
+### Checklist vs implementation
+
+| Plan item | Status | How it was done |
+|-----------|--------|-----------------|
+| `device_registry.py` | **Done** | Register serial/TCP, `list_devices`, `push_to`, **`push_to_all`** (sequential), `stop_all`, `query_all`, `get_manifests_summary`. |
+| LLM routing: `[{"device": "name", "code": "..."}]` | **Not done** | Interactive `lial_host.py` still targets **one** manifest per session; registry is for **programmatic** / MCP-style use. |
+| Parallel push `asyncio.gather` | **Partial** | **`push_to_all` is sequential**, not parallel. Docstring mentions parallel; implementation does not use `gather`. |
+| `mcp_server.py` | **Done (scaffold)** | **`__main__`**: minimal **stdio JSON-RPC** loop (`tools/list`, `tools/call`) — no `mcp` PyPI package required. Tool handlers route to `DeviceRegistry` + `lial_compiler`. Wire from Cursor/Claude via MCP config pointing at this script. |
+| Wasm validation (Alphabet only) | **Done (ESP `main_loop`)** | `validation.rs` + hook in `main_loop`. **Pico path:** bypass — see Phase 4. |
+| Peripheral whitelisting (manifest pins) | **Not done** | Syscalls still rely on HAL; no central “reject GPIO not in manifest” layer documented here. |
+| Hardware watchdog (ESP + Pico kick) | **Partial** | Pico init creates **`Watchdog`** from HAL but **feeding** from transport loop is **not** described as mandatory in the bring-up path; ESP RWDT kick **not** verified here. |
+
+---
+
+## Plan appendix tables (files and dependencies)
+
+### “New files” table from plan vs repo
+
+| Plan file | Present? | Actual path / note |
+|-----------|----------|---------------------|
+| `transport.rs` | Yes | `lial-receiver/src/transport.rs` |
+| `transport_usb.rs` | No | **`EmbeddedIoTransport`** in `transport.rs` |
+| `transport_usb_pico.rs` | No | USB loop in **`main.rs`** (`pico_entry`) |
+| `rp2040.rs` | Yes | `lial-receiver/src/rp2040.rs` |
+| `transport_wifi.rs` | Yes | Stub `WifiTcpTransport` |
+| `executor.rs` | Yes | + `executor_dual.rs` |
+| `transport.py` | Yes | Includes `TcpTransport` (no separate `transport_tcp.py`) |
+| `lial_device.py` | Yes | |
+| `device_registry.py` | Yes | |
+| `mcp_server.py` | Yes | |
+
+### Cargo (plan vs actual)
+
+| Plan | Actual |
+|------|--------|
+| `rp2040-hal`, `cortex-m`, `embedded-alloc`, `usb-*` | As in `Cargo.toml` + **`rp2040-boot2`**, **`portable-atomic`**, **`embedded-hal-0-2`** |
+| `esp-wifi` for Phase 3 | Optional feature **`esp32c3-wifi`** with `esp-wifi`, `smoltcp` — **not fully wired to working TCP server** |
+
+### Python (plan vs actual)
+
+| Plan | Actual |
+|------|--------|
+| `zeroconf` for mDNS | Used optionally in **`discovery.py`** |
+| `mcp` SDK | Confirm in your venv if `mcp_server.py` imports it |
+
+---
+
+## Technical reference (cross-cutting)
+
+### Raspberry Pi Pico (build and pins)
+
+- **Build:** `cargo build --release --no-default-features --features rp2040 --target thumbv6m-none-eabi`
+- **Boot:** `rp2040-boot2` `.boot2` section; **`memory.x`** + `build-std`.
+- **Pins:** LED **25**, I2C0 **SDA 4 / SCL 5**, ADC **GP26** registered as channel **26** in manifest.
+- **USB:** CDC; **`usb_write_all`** for large frames; **`set_usb_poll` / `clear_usb_poll`** around `LialRuntime::execute` so `lial_delay_ms` keeps USB alive.
+- **I2C:** 100 kHz, **`RecoveringI2c`**, boot manifest uses **`0x3C`** without scan (avoids some OLED oddities).
+
+### ESP32-C3
+
+- **`main_loop`:** discovery, bytecode with **import validation**, stop, query, set param, hot-swap.
+- **Transport:** `EmbeddedIoTransport` over USB Serial JTAG.
+
+### Host LLM prompt (SSD1306)
+
+- `lial_host.py` **SYSTEM_PROMPT**: init sequence, **mandatory full display clear** (8×129 bytes per page pattern), bitmap fonts; explicitDevices even if `devices_present` is empty.
+
+### Examples
+
+- **`examples/test_drivers/blink_led`:** GPIO **25** for Pico.
+
+### Related docs
+
+| File | Purpose |
+|------|---------|
+| `docs/week3/plan.md` | Expanded phased narrative in repo |
+| `docs/week3/research.md` | Flashing, transports, multi-core, ESP-Claw notes |
+| `docs/week3/context.md` | Pre–Week 3 snapshot |
+
+---
+
+## Verified scenarios (reported on hardware)
+
+- **Pico:** discovery `rp2040-pico`, blink, ADC live read, SSD1306 with init + clear + bitmap digits.
+- **ESP32-C3:** existing Week 1–2 path preserved via `main_loop`.
+
+---
+
+## Recommended follow-ups (priority order)
+
+1. **Unify Pico with `main_loop`:** either extend `LialTransport` for USB CDC write polling or share opcode dispatch so Pico gets **validation** + **extended opcodes**.
+2. **Complete Phase 3:** real `WifiTcpTransport` + ESP main wiring + optional mDNS advertise.
+3. **Dual-core:** spawn Core 1 in `pico_entry`, set `core1_available = true`, mailbox bytecode.
+4. **Phase 5:** peripheral whitelist from manifest; watchdog feed; **`push_to_all`** true parallelism; optional multi-manifest LLM mode in `lial_host.py`.
+
+---
+
+*This document is aligned to `.cursor/plans/week_3_phased_build_3ae58fd8.plan.md` for traceability. Last updated for plan-vs-implementation audit.*
