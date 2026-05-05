@@ -2,7 +2,7 @@
 
 > "Silicon as a Service for Agentic Systems"
 
-LIAL is an ultra-lightweight hardware abstraction layer that turns any microcontroller into a programmable extension of an LLM's reasoning engine via JIT-compiled WebAssembly. You describe what you want in natural language, the LLM writes firmware, and the device executes it — all in seconds.
+LIAL is an ultra-lightweight hardware abstraction layer that turns microcontrollers — today **ESP32-C3** and **Raspberry Pi Pico (RP2040)** — into a programmable extension of an LLM's reasoning engine via JIT-compiled WebAssembly. You describe what you want in natural language, the LLM writes firmware, and the device executes it — often in seconds.
 
 ## Demo
 
@@ -14,11 +14,9 @@ LIAL is an ultra-lightweight hardware abstraction layer that turns any microcont
   │ #[unsafe(no_mangle)]
   │ pub extern "C" fn run_logic() {
   │     unsafe {
-  │         // Read ADC
+  │         // ADC channel comes from discovery manifest (e.g. 0 on ESP32-C3, 26 on Pico)
   │         let value = lial_adc_read(0);
-  │         // Init OLED, clear screen, render digits
-  │         // ... (font bitmap rendering)
-  │         // Set LED brightness proportional to pot
+  │         // SSD1306: init, clear all pages, bitmap digits — see host system prompt
   │         lial_pwm_set(5, value * 10000 / 4095);
   │     }
   │ }
@@ -26,7 +24,7 @@ LIAL is an ultra-lightweight hardware abstraction layer that turns any microcont
 
   Compiling to wasm …
   Compiled OK — 1,247 bytes
-  Pushing to ESP32 …
+  Pushing to device …
   Running on device …
   ✓ Execution finished.
   Device logs: ['ADC=2048', 'Display updated']
@@ -35,37 +33,37 @@ LIAL is an ultra-lightweight hardware abstraction layer that turns any microcont
 ## Architecture
 
 ```
-Host (Python)                              Receiver (Rust, on ESP32-C3)
-┌──────────────────────┐                  ┌──────────────────────────────┐
-│ Natural language      │                  │ LialRuntime<Esp32C3Hal>      │
-│ → GPT-4o             │                  │ ├─ wasmi wasm interpreter    │
-│ → Rust → wasm compile│   LIAL-Link      │ ├─ 11 syscall bindings      │
-│ → USB serial push    │◄──(USB serial)──►│ ├─ gas metering (500M fuel) │
-│                       │   binary frames  │ ├─ GPIO, PWM, ADC, I2C     │
-│ lial init (auto-     │                  │ ├─ SPI, UART, delay, log   │
-│   detect + flash)    │                  │ └─ EmbeddedHalAdapter      │
-└──────────────────────┘                  └──────────────────────────────┘
+Host (Python)                         Receiver (Rust — ESP32-C3 or RP2040 Pico)
+┌──────────────────────┐             ┌─────────────────────────────────────┐
+│ Natural language      │             │ LialRuntime + board HAL             │
+│ → GPT-4o             │             │ ├─ wasmi (sandboxed wasm)            │
+│ → Rust → wasm        │  LIAL-Link  │ ├─ syscall bindings + gas (“fuel”)   │
+│ → serial / optional   │  frames     │ ├─ GPIO, PWM, ADC, I2C, SPI, UART   │
+│    TCP (Wi‑Fi WIP)   │◄───────────►│ └─ EmbeddedHalAdapter               │
+│ lial init (ESP32)    │             │ Transport: USB-serial JTAG, USB CDC │
+└──────────────────────┘             └─────────────────────────────────────┘
 ```
 
 ## Prerequisites
 
-- **Rust** (nightly + stable) with two targets:
-  - `wasm32-unknown-unknown` — for compiling wasm drivers
-  - `riscv32imc-unknown-none-elf` — for building ESP32-C3 firmware
-- **Python 3.10+** with `openai`, `pyserial`, `esptool`
-- **espflash** — for flashing firmware to ESP32 boards
-- An **ESP32-C3** board connected via USB
+- **Rust** (nightly + stable) with targets:
+  - `wasm32-unknown-unknown` — wasm drivers
+  - `riscv32imc-unknown-none-elf` — ESP32-C3 firmware
+  - `thumbv6m-none-eabi` — **Raspberry Pi Pico** firmware (requires nightly **build-std** — see `.cargo/config.toml`)
+- **Python 3.10+** with `openai`, `pyserial`, `esptool` (optional: `zeroconf` for host mDNS / `--transport wifi`)
+- **espflash** — ESP32 flashing
+- **picotool** or **elf2uf2-rs** — Pico UF2 flashing (`cargo install elf2uf2-rs`)
 
 ```bash
-# Rust targets
 rustup target add wasm32-unknown-unknown
+rustup target add riscv32imc-unknown-none-elf
+rustup target add thumbv6m-none-eabi
 rustup toolchain install nightly
 
-# Python deps
 pip install openai pyserial esptool
 
-# ESP32 flash tool
 cargo install espflash
+cargo install elf2uf2-rs   # optional; Pico build also supports probe-rs
 ```
 
 ## Quick Start
@@ -88,20 +86,37 @@ python lial_cli.py download --board esp32c3
 3. Download the matching firmware binary from the GitHub release
 4. Flash it to the device
 
-### Option 2: Build from Source
+### Option 2a: Build ESP32-C3 from source
 
 ```bash
 cd lial-receiver
 
-# Build (requires nightly for build-std)
 cargo +nightly build --release \
   --target riscv32imc-unknown-none-elf \
   --features esp32c3 --no-default-features
 
-# Flash
 espflash flash --port /dev/cu.usbmodem3101 \
   target/riscv32imc-unknown-none-elf/release/lial-receiver
 ```
+
+### Option 2b: Build Raspberry Pi Pico (RP2040) from source
+
+```bash
+cd lial-receiver
+
+cargo +nightly build --release \
+  --target thumbv6m-none-eabi \
+  --no-default-features \
+  --features rp2040
+
+# UF2 via elf2uf2-rs (BOOTSEL → drag, or use -d when USB drive mounted)
+elf2uf2-rs target/thumbv6m-none-eabi/release/lial-receiver lial-pico.uf2
+
+# Or load directly (device in BOOTSEL / picotool discovers RP2)
+picotool load target/thumbv6m-none-eabi/release/lial-receiver -f && picotool reboot
+```
+
+Reference wiring for the **Pico** build in-tree: onboard LED **GPIO 25**, I2C0 **SDA 4 / SCL 5** (e.g. SSD1306 @ `0x3C`), ADC pot on **GPIO 26** (manifest reports channel **`26`**). Full Week 3 notes: `docs/week3/WEEK3_IMPLEMENTATION.md`.
 
 ### Run the Host
 
@@ -109,14 +124,19 @@ espflash flash --port /dev/cu.usbmodem3101 \
 cd lial-host
 export OPENAI_API_KEY="sk-..."
 
-python3 lial_host.py                             # auto-detects serial port
-python3 lial_host.py --port /dev/cu.usbmodem3101  # or specify explicitly
+python3 lial_host.py                             # auto-detect serial (ESP32 or Pico CDC)
+python3 lial_host.py --port /dev/cu.usbmodem3101 # explicit ESP32
+python3 lial_host.py --port /dev/cu.usbmodemLIAL_PICO_0011   # Pico (example)
+
+# Experimental: TCP to a future Wi-Fi receiver (requires device advertising/listening)
+python3 lial_host.py run --transport wifi --ip 192.168.1.50
 ```
 
 Then type a task:
 
 ```
-  you → blink the led on pin 5 three times
+  you → blink the onboard LED three times        # Pico: often GPIO 25; follow manifest
+  you → blink the led on pin 5 three times        # ESP32-C3 external LED
   you → read the potentiometer and show the value on the OLED
   you → fade the LED brightness up and down using PWM
 ```
@@ -125,7 +145,7 @@ The host will:
 1. Send your prompt to GPT-4o along with the device's hardware manifest
 2. Show you the generated Rust code
 3. Compile it to a wasm binary (memory-constrained to 64 KB, 8 KB stack)
-4. Push the binary to the ESP32 over USB serial
+4. Push the binary over **USB serial** (or `--transport wifi` when supported)
 5. Wait for the result and display it
 
 If compilation fails, the host sends the error back to the LLM and retries up to 2 times.
@@ -156,9 +176,9 @@ cd ../lial-host
 python3 hil_test.py --port /dev/cu.usbmodem3101
 ```
 
-## The Atomic Alphabet (11 Syscalls)
+## The Atomic Alphabet (12 Syscalls)
 
-Every wasm driver communicates with hardware through these functions:
+Every wasm driver communicates with hardware through these functions (all imported from module `env` unless noted):
 
 | Syscall | Signature | Purpose |
 |---------|-----------|---------|
@@ -168,53 +188,60 @@ Every wasm driver communicates with hardware through these functions:
 | `lial_get_uptime_us` | `() -> u64` | Microseconds since boot |
 | `lial_i2c_transfer` | `(addr, tx_ptr, tx_len, rx_ptr, rx_len) -> i32` | I2C read/write |
 | `lial_pwm_set` | `(channel: u32, duty: u32)` | Set PWM duty (0–10000 = 0–100%) |
-| `lial_adc_read` | `(channel: u32) -> u32` | Read ADC channel (12-bit, 0–4095) |
+| `lial_adc_read` | `(channel: u32) -> u32` | Read ADC (resolution in manifest; often 12-bit) |
 | `lial_spi_transfer` | `(bus, tx_ptr, tx_len, rx_ptr, rx_len) -> i32` | SPI read/write |
 | `lial_uart_write` | `(bus: u32, ptr: u32, len: u32) -> i32` | Write to UART bus |
 | `lial_uart_read` | `(bus, ptr, len, timeout_ms) -> i32` | Read from UART bus |
 | `lial_log` | `(ptr: u32, len: u32)` | Log a UTF-8 message |
+| `lial_get_param` | `(slot: u32) -> u32` | Read host-writable parameter slot (0–7); see extended protocol |
 
 ## Project Structure
 
 ```
 LIAL/
-├── lial-receiver/              # Rust firmware (runs on ESP32-C3 or laptop)
+├── lial-receiver/              # Rust firmware (ESP32-C3, RP2040 Pico, or std mock)
 │   ├── src/
-│   │   ├── lib.rs              # LialHardware trait, LialRuntime<H>, syscall bindings
+│   │   ├── lib.rs              # LialHardware, LialRuntime, main_loop, syscalls
 │   │   ├── mock.rs             # LaptopMock — prints GPIO, uses thread::sleep
-│   │   ├── esp32c3.rs          # Esp32C3Hal — LEDC PWM, ADC, I2C, USB serial I/O
-│   │   ├── embedded_hal_adapter.rs  # Board-agnostic adapter (DynPwm, DynAdc, etc.)
-│   │   ├── link.rs             # LIAL-Link v0.1 binary frame protocol
-│   │   ├── manifest.rs         # Discovery manifest builder
-│   │   └── main.rs             # Dual entry: #[esp_hal::main] or std fn main()
-│   ├── release-manifest.json   # Release index for lial init / lial download
-│   ├── tests/integration.rs    # Integration tests
-│   └── .cargo/config.toml      # ESP32-C3 build config
+│   │   ├── esp32c3.rs          # Esp32C3Hal
+│   │   ├── rp2040.rs           # Rp2040Hal (Pico) — Week 3
+│   │   ├── transport.rs       # LialTransport, EmbeddedIoTransport, StdioTransport
+│   │   ├── executor.rs         # LialExecutor, param slots — Week 3
+│   │   ├── transport_wifi.rs  # Wi-Fi TCP stub (esp32c3-wifi feature)
+│   │   ├── validation.rs       # Wasm import whitelist
+│   │   ├── embedded_hal_adapter.rs
+│   │   ├── link.rs             # LIAL-Link opcodes + Frame
+│   │   ├── manifest.rs
+│   │   └── main.rs             # esp_hal::main, rp2040 entry, or std main
+│   ├── memory.x                # Pico RAM layout (thumbv6)
+│   ├── release-manifest.json
+│   ├── tests/integration.rs
+│   └── .cargo/config.toml      # riscv + thumbv6 (build-std for Pico)
 │
-├── lial-host/                  # Python host orchestrator
-│   ├── lial_cli.py             # Unified CLI: lial init, lial download
-│   ├── lial_host.py            # Interactive CLI: LLM → compile → push → result
-│   ├── lial_compiler.py        # Rust body → wasm (64 KB memory, 8 KB stack)
-│   ├── serial_push.py          # Low-level serial test tool
-│   ├── hil_test.py             # Hardware-in-the-loop test harness
-│   ├── hil_tests/              # Per-peripheral HIL test scripts
-│   ├── board_registry.py       # USB VID/PID → board family mapping
-│   ├── flash_backends/         # Per-family flash tools (espflash, UF2, avrdude, etc.)
-│   └── lial_commands/          # CLI subcommands (init, download)
+├── lial-host/
+│   ├── lial_cli.py
+│   ├── lial_host.py            # LLM loop; --transport serial|wifi
+│   ├── transport.py            # SerialTransport, TcpTransport — Week 3
+│   ├── lial_device.py / device_registry.py / discovery.py / mcp_server.py
+│   ├── lial_compiler.py
+│   ├── hil_test.py
+│   ├── board_registry.py
+│   ├── flash_backends/
+│   └── lial_commands/
 │
-├── patches/                    # Local forks for ESP32-C3 compatibility
-│   ├── wasmi/                  # Arc→Rc, Send+Sync removal, portable-atomic
-│   ├── wasmi_core/
-│   ├── wasmi_collections/
-│   └── wasmparser/
+├── patches/                    # wasmi forks (ESP32 + dependency graph)
+│   └── …
 │
-├── examples/test_drivers/      # Pre-built wasm test fixtures
+├── examples/test_drivers/
 │
 └── docs/
-    ├── changelog.md            # Project-wide changelog
-    ├── week1/                  # Week 1: core runtime, ESP32-C3, serial protocol
-    ├── week2/                  # Week 2: board-agnostic adapter, firmware delivery, E2E testing
-    └── week3/                  # Week 3: SVD manifests, Wi-Fi transport, multi-device
+    ├── changelog.md
+    ├── week1/
+    ├── week2/
+    └── week3/
+        ├── misc/buildplan.md        # Phased Week 3 plan (in-repo)
+        ├── WEEK3_IMPLEMENTATION.md # What shipped vs plan
+        ├── research.md / context.md / plan.md
 ```
 
 ## LIAL-Link Protocol
@@ -228,20 +255,35 @@ Binary framing over any byte stream (USB serial, stdin/stdout):
 | Opcode | Direction | Purpose |
 |--------|-----------|---------|
 | `0x01` | Bidirectional | Discovery — JSON hardware manifest |
-| `0x02` | Host → Receiver | Bytecode Push — raw wasm bytes |
-| `0x03` | Receiver → Host | Execution Result — JSON `{"ok":true,"logs":[...]}` |
+| `0x02` | Host → Receiver | Bytecode push — raw wasm |
+| `0x03` | Receiver → Host | Execution result — JSON |
+| `0x04`–`0x09` | (extended) | Streaming, stop, query/status, set param, hot-swap — **see `link.rs`; ESP32 `main_loop` implements most; Pico path is narrower today** |
 
-## Hardware Tested
+Details and gaps: `docs/week3/WEEK3_IMPLEMENTATION.md`.
+
+## Hardware tested
+
+### ESP32-C3 (reference bench)
 
 | Component | GPIO | Protocol | Status |
 |-----------|------|----------|--------|
 | External LED (330 Ω) | 5 | LEDC PWM (10-bit, 5 kHz) | Working |
-| Potentiometer (10 kΩ) | 2 | ADC1 (12-bit) | Working |
+| Potentiometer (10 kΩ) | 2 | ADC1 (12-bit); manifest channel `0` | Working |
 | SSD1306 OLED (0.96") | 8 (SDA), 9 (SCL) | I2C @ 0x3C | Working |
 
-## wasmi Patches
+### Raspberry Pi Pico (Week 3)
 
-The ESP32-C3 (`riscv32imc`) lacks hardware atomics, but `wasmi` uses `Arc` and `core::sync::atomic`. The `patches/` directory contains forks of 4 crates that replace `Arc` with `Rc`, remove `Send + Sync` bounds, and use `portable-atomic` for CAS operations. Applied via `[patch.crates-io]` in `Cargo.toml`.
+| Component | GPIO | Protocol | Status |
+|-----------|------|----------|--------|
+| Onboard LED | 25 | GPIO | Working |
+| Potentiometer | 26 | ADC (manifest channel **26**) | Working |
+| SSD1306 OLED | 4 (SDA), 5 (SCL) | I2C @ 0x3C | Working |
+
+## wasmi patches
+
+The **ESP32-C3** (`riscv32imc`) has no native atomics; `wasmi` historically relied on `Arc` and atomics. The `patches/` directory contains forks (`wasmi`, `wasmi_core`, `wasmi_collections`, `wasmparser`) wired via `[patch.crates-io]`.
+
+**RP2040** builds use **`thumbv6m-none-eabi`** with **`--no-default-features`** (no `wasmi/std`). The same patched crates are used where the resolver requires them; **`portable-atomic`** also appears in the Pico feature set for the dependency graph.
 
 ## Releases
 
@@ -249,10 +291,10 @@ The ESP32-C3 (`riscv32imc`) lacks hardware atomics, but `wasmi` uses `Arc` and `
 |---------|-----|----------|
 | v0.1.0-beta | `v0.1.0-beta` | ESP32-C3 merged firmware binary + manifest.json |
 
-## Development Tracking
+## Development tracking
 
-See `docs/` for changelogs and weekly development docs.
-
-- `docs/week1/` — Receiver library, serial transport, JIT compiler, ESP32-C3 deployment
-- `docs/week2/` — Board-agnostic adapter, firmware delivery, E2E hardware testing, LEDC PWM
-- `docs/week3/` — SVD-driven manifests, Wi-Fi transport, multi-device orchestration
+- `docs/week1/` — Core runtime, ESP32-C3, serial protocol  
+- `docs/week2/` — Board-agnostic adapter, firmware delivery, E2E testing  
+- `docs/week3/misc/buildplan.md` — **Phased Week 3 build plan** (5 phases, in git)  
+- `docs/week3/WEEK3_IMPLEMENTATION.md` — **Implementation status** vs that plan (Pico, transport, Wi‑Fi stub, MCP, validation)  
+- `docs/week3/research.md`, `context.md`, `plan.md` — Notes and narrative
