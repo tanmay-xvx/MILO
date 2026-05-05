@@ -13,3 +13,6 @@ bin/
 .env
 
 target/
+
+# Embedded firmware images (build locally; use releases for binaries)
+*.uf2

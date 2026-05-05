@@ -9,16 +9,16 @@ unsafe extern "C" {
     fn lial_log(ptr: u32, len: u32);
 }
 
-static MSG: &[u8] = b"Blinking LED on GPIO 5";
+static MSG: &[u8] = b"Blinking LED on GPIO 25";
 
 #[unsafe(no_mangle)]
 pub extern "C" fn run_logic() {
     unsafe {
         lial_log(MSG.as_ptr() as u32, MSG.len() as u32);
         for _ in 0..5 {
-            lial_gpio_set(5, 1);
+            lial_gpio_set(25, 1);
             lial_delay_ms(500);
-            lial_gpio_set(5, 0);
+            lial_gpio_set(25, 0);
             lial_delay_ms(500);
         }
     }

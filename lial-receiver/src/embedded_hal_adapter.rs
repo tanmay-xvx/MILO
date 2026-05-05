@@ -161,28 +161,27 @@ impl<'d> EmbeddedHalAdapter<'d> {
     }
 
     /// Scan a specific I²C bus for responding 7-bit addresses (0x08..=0x77 by
-    /// convention -- reserved ranges excluded). A device is reported
-    /// "present" if a 1-byte read from its address is ACK'd.
+    /// convention -- reserved ranges excluded).
     ///
-    /// Using a 1-byte read (rather than a zero-length write) is the most
-    /// portable probe because the embedded-hal `I2c::read` call requires the
-    /// slave to ACK the address phase before NAK-ing the data byte; buses
-    /// that don't support zero-length transactions still report the
-    /// controller's address-phase outcome.
-    ///
-    /// This is used to enrich the discovery manifest at boot so the host /
-    /// LLM agent can see what is actually physically wired without probing
-    /// separately.
+    /// Tries a 1-byte write probe first (works for write-only devices like
+    /// SSD1306), then falls back to a 1-byte read probe. A device is
+    /// "present" if either succeeds.
     pub fn scan_i2c_bus(&mut self, bus: u32) -> Vec<u8> {
         let mut found = Vec::new();
         let bus_ref = match self.i2c_buses.get_mut(&bus) {
             Some(b) => b,
             None => return found,
         };
-        let mut rx = [0u8; 1];
         for addr in 0x08u8..=0x77u8 {
-            if bus_ref.transfer(addr, &[], &mut rx) == 0 {
+            // Write probe: send a single zero byte (benign for most devices)
+            if bus_ref.transfer(addr, &[0x00], &mut []) == 0 {
                 found.push(addr);
+            } else {
+                // Read probe fallback for read-only devices
+                let mut rx = [0u8; 1];
+                if bus_ref.transfer(addr, &[], &mut rx) == 0 {
+                    found.push(addr);
+                }
             }
         }
         found

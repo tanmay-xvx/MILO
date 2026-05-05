@@ -1,6 +1,6 @@
-# Week 3 Plan: Transport + Multi-Device + Feedback + Safety + DX
+# Week 3 Plan: Transport + Multi-Board + Multi-Core + Wireless Control + DX
 
-**Goal:** Untether devices from USB, enable multi-device orchestration, close the agentic feedback loop, add production guardrails, and build the developer-facing tools that make LIAL accessible.
+**Goal:** Untether devices from USB, prove cross-platform portability on Raspberry Pi Pico, establish dual-core execution architecture, enable wireless runtime control, and build the MCP server that differentiates LIAL from ESP-Claw.
 
 ## Prerequisites (Week 2 -- Done)
 
@@ -261,51 +261,194 @@ Get the `Arc`->`Rc` / `portable-atomic` changes merged upstream into the `wasmi`
 
 ---
 
-## Week 3 Tasks Summary
+---
+
+## Layer 9: Raspberry Pi Pico Port + Multi-Core
+
+**Problem:** LIAL only runs on ESP32-C3 (single-core RISC-V). Proving it works on RP2040 (dual-core ARM) validates the "any silicon" promise and unlocks dual-core architecture.
+
+### Pico Porting (RP2040)
+
+The RP2040 is architecturally different from ESP32-C3:
+- Dual-core ARM Cortex-M0+ @ 133MHz (vs single-core RISC-V @ 160MHz)
+- 264 KB SRAM (vs 400 KB) — tighter but feasible with 64KB Wasm limit
+- Native atomics (no `portable-atomic` patches needed!)
+- External QSPI flash with XIP (Execute In Place)
+- Rust target: `thumbv6m-none-eabi`
+- HAL: `rp2040-hal` (implements `embedded-hal` traits — same as ESP32-C3 adapter)
+
+### wasmi on RP2040
+
+Key hypothesis: wasmi may compile clean without our 4-crate patch set because Cortex-M0+ has native atomics. If true, RP2040 is *easier* than ESP32-C3.
+
+Memory budget:
+```
+Total SRAM: 264 KB
+  Stack (both cores):      16 KB
+  Firmware:                80 KB
+  WiFi (Pico W):          ~50 KB
+  Available for Wasm:    ~118 KB
+    wasmi interpreter:    ~40 KB
+    Wasm linear memory:    64 KB
+    Buffers:              ~14 KB
+```
+
+### Dual-Core Execution Model
+
+```
+Core 0 (I/O):                    Core 1 (Execution):
+┌────────────────────┐           ┌────────────────────┐
+│ Transport loop     │           │ wasmi runtime      │
+│ Frame parse/send   │  ←FIFO→  │ Wasm instantiate   │
+│ mDNS/heartbeat     │           │ Alphabet dispatch  │
+│ Sensor streaming   │           │ Fuel metering      │
+│ Watchdog kick      │           │                    │
+└────────────────────┘           └────────────────────┘
+```
+
+Benefits:
+- Non-blocking transport (receive stop/swap while executing)
+- Hot-swap without reboot
+- Concurrent sensor streaming + control logic
+- Independent watchdog management
+
+### LialExecutor Trait
+
+```rust
+trait LialExecutor {
+    fn submit_wasm(&mut self, bytecode: &[u8]);
+    fn poll_result(&mut self) -> Option<ExecResult>;
+    fn is_running(&self) -> bool;
+    fn stop(&mut self);
+}
+
+// SingleCoreExecutor: runs inline (ESP32-C3)
+// DualCoreExecutor: sends to Core 1 via FIFO (RP2040, ESP32-S3)
+```
+
+### Tasks
+
+| Task | Effort | Priority |
+|------|--------|----------|
+| Compile wasmi for `thumbv6m-none-eabi` (test if patches needed) | Small | 1 |
+| Create `Rp2040Hal` factory (like `Esp32C3Hal`) | Medium | 1 |
+| Basic blink via Wasm on Pico (USB transport) | Medium | 1 |
+| Dual-core split (transport on Core 0, Wasm on Core 1) | Medium | 2 |
+| WiFi transport on Pico W (`cyw43` + `embassy-net`) | Large | 3 |
+| HIL tests on Pico (GPIO, PWM, I2C) | Medium | 2 |
+
+---
+
+## Layer 10: Extended Control Protocol (Wireless Runtime Control)
+
+**Problem:** The host can only push Wasm and receive results. It cannot stop, swap, query, or adjust a running module remotely.
+
+### Extended LIAL-Link OpCodes
+
+| OpCode | Direction | Name | Payload |
+|--------|-----------|------|---------|
+| 0x01 | Dev→Host | Discovery | Manifest JSON |
+| 0x02 | Host→Dev | Bytecode Push | Wasm binary |
+| 0x03 | Dev→Host | Exec Result | Return value + logs |
+| 0x04 | Dev→Host | Streaming Data | CBOR sensor readings |
+| 0x05 | Host→Dev | Stop Execution | (empty) |
+| 0x06 | Host→Dev | Query Status | (empty) |
+| 0x07 | Dev→Host | Status Response | `{running, fuel_left, uptime}` |
+| 0x08 | Host→Dev | Set Parameter | `{slot: u8, value: u32}` |
+| 0x09 | Host→Dev | Hot-Swap | New Wasm binary |
+
+### Shared Parameter Slots
+
+Allow host to tweak running Wasm without recompile:
+
+```rust
+static PARAM_SLOTS: [AtomicU32; 8] = [...];
+// New alphabet syscall:
+fn lial_get_param(slot: u32) -> u32;
+```
+
+Host sends `0x08 {slot: 0, value: 28}` → Wasm reads `lial_get_param(0)` → returns 28.
+
+### Persistent TCP Architecture
+
+```
+Receiver boots → WiFi connect → mDNS register "_lial._tcp.local."
+Host discovers → TCP connect (port 9100) → persistent socket
+Heartbeat every 5s → detect disconnect < 10s
+On disconnect → receiver enters safe state (stop Wasm, wait)
+```
+
+### Python Host API
+
+```python
+class LialDevice:
+    async def push(self, wasm: bytes) -> ExecResult
+    async def stop(self) -> None
+    async def hot_swap(self, wasm: bytes) -> None
+    async def set_param(self, slot: int, value: int) -> None
+    async def query_status(self) -> DeviceStatus
+    async def stream_subscribe(self) -> AsyncIterator[SensorData]
+    async def ota_update(self, firmware: bytes) -> None
+```
+
+### Tasks
+
+| Task | Effort | Priority |
+|------|--------|----------|
+| Implement opcodes 0x04-0x09 in receiver | Medium | 2 |
+| Persistent TCP server on receiver (WiFi) | Medium | 1 |
+| mDNS registration (`_lial._tcp.local.`) | Small | 2 |
+| Heartbeat + disconnect detection | Small | 2 |
+| `LialDevice` async Python class | Medium | 2 |
+| Shared parameter slots + `lial_get_param` syscall | Small | 3 |
+
+---
+
+## Week 3 Tasks Summary (Revised)
 
 | Task | Layer | Effort | Priority |
 |------|-------|--------|----------|
-| SVD parser + manifest generator | 3b | Medium | 1 (highest) |
-| SVD file collection (ESP32-C3, RP2040, STM32F4) | 3b | Small | 1 |
-| Runtime auto-discovery expansion | 3b | Small | 2 |
-| Wi-Fi transport (TCP socket) | 4 | Medium | 1 (highest) |
-| Transport abstraction trait (`LialTransport`) | 4 | Medium | 1 |
+| Compile wasmi for RP2040, test if patches needed | 9 | Small | 1 (highest) |
+| `Rp2040Hal` factory + basic Wasm blink on Pico | 9 | Medium | 1 (highest) |
+| `LialTransport` trait + WiFi TCP (ESP32-C3) | 4 | Medium | 1 (highest) |
+| Persistent TCP server on receiver | 10 | Medium | 1 (highest) |
+| SVD parser + manifest generator | 3b | Medium | 1 |
+| Dual-core executor (Core 0 I/O, Core 1 Wasm) | 9 | Medium | 2 |
+| Extended opcodes (0x04-0x09) | 10 | Medium | 2 |
+| HIL tests on Pico (GPIO, PWM, I2C) | 9 | Medium | 2 |
+| mDNS discovery + heartbeat | 10 | Small | 2 |
 | BLE + Wi-Fi device discovery | 4 | Medium | 2 |
-| BLE transport (GATT) | 4 | Medium | 3 |
-| CBOR serialization | 4 | Small | 3 |
-| Device registry + LLM device routing | 5 | Medium | 2 |
-| Parallel execution + device groups | 5 | Medium | 3 |
-| Bidirectional streaming (opcode `0x04`) | 6 | Medium | 2 |
-| LLM-in-the-loop agentic cycle | 6 | Medium | 3 |
-| Persistent programs + hot-swap | 6 | Medium | 3 |
+| Bidirectional streaming (opcode 0x04) | 6 | Medium | 2 |
 | Peripheral whitelisting + wasm validation | 7 | Small | 2 |
-| Hardware watchdog + rate limiting | 7 | Small | 3 |
-| OTA firmware updates + TLS | 7 | Medium | 4 |
-| `lial` CLI tool | 8 | Medium | 3 |
-| MCP server | 8 | Medium | 3 |
+| Device registry + LLM device routing | 5 | Medium | 3 |
+| MCP server (LIAL as MCP tool) | 8 | Medium | 3 |
+| `LialDevice` async Python host class | 10 | Medium | 3 |
+| WiFi transport on Pico W | 9 | Large | 3 |
+| BLE transport (GATT) | 4 | Medium | 3 |
+| Persistent programs + hot-swap | 6 | Medium | 3 |
+| LLM-in-the-loop agentic cycle | 6 | Medium | 3 |
+| WiFi OTA firmware updates | 7 | Medium | 4 |
 | Upstream wasmi patches | 8 | Small | 4 |
 
 ### Priority Order Within Week 3
 
-1. **SVD-driven manifests + auto-discovery** -- Eliminates hand-coded capability lists; scales to any board.
-2. **Wi-Fi transport + transport abstraction** -- Untethers the device. Enables everything else.
-2. **Bidirectional streaming + device discovery** -- Enables sensor reading and fleet visibility.
-3. **Multi-device orchestration + LLM-in-the-loop** -- The agentic loop across multiple devices.
-4. **Safety hardening** -- Whitelisting, watchdog, wasm validation.
-5. **DX** -- CLI tool, MCP server, upstream patches.
+1. **Pico port + WiFi transport** — Proves "any silicon" and untethers from USB. The single biggest validation milestone.
+2. **Extended control protocol + dual-core** — Makes LIAL a real wireless control system, not just push-and-pray.
+3. **Discovery + streaming + safety** — Fleet visibility, sensor feedback, production guardrails.
+4. **Multi-device + MCP + agentic loop** — The orchestration and ecosystem layer.
+5. **OTA + upstream patches** — Polish and maintenance.
 
 ---
 
 ## What's Done After Week 3
 
 If Week 2 and Week 3 are completed, LIAL will have:
-- Any supported board flashable with one command or auto-detected on plug-in
-- Board-agnostic hardware abstraction via `embedded-hal`
-- ~12 syscalls covering GPIO, I2C, SPI, PWM, ADC, UART, delay, uptime, log
-- Rich auto-generated hardware manifests from SVD + runtime probing
-- USB, Wi-Fi, and BLE transport options
-- Multi-device orchestration with LLM device routing
-- Bidirectional sensor streaming with LLM-in-the-loop adaptation
-- Hot-swap of running programs
-- Peripheral whitelisting and hardware watchdog safety
-- A standalone CLI tool and an MCP server for agent integration
+- **Two proven platforms:** ESP32-C3 (RISC-V) and Raspberry Pi Pico (ARM) — validates portability
+- **Dual-core execution** on RP2040/ESP32-S3 (transport + Wasm on separate cores)
+- **Wireless operation:** WiFi TCP persistent connection with mDNS discovery
+- **Full runtime control:** Stop, swap, query, parameterize running modules remotely
+- **Bidirectional sensor streaming** with LLM-in-the-loop adaptation
+- **SVD-driven manifests** — no more hand-coding capabilities per board
+- **MCP server** — any MCP-compatible agent can program hardware
+- **Safety hardening** — whitelisting, watchdog, Wasm validation
+- **Clear differentiation from ESP-Claw:** runs on $2 hardware, formal sandboxing, offline-first, multi-device orchestration

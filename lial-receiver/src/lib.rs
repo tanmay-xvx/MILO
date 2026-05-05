@@ -14,9 +14,21 @@ pub mod mock;
 #[cfg(feature = "esp32c3")]
 pub mod esp32c3;
 
+#[cfg(feature = "esp32c3")]
+pub mod transport_wifi;
+
+#[cfg(feature = "rp2040")]
+pub mod rp2040;
+
+#[cfg(feature = "rp2040")]
+pub mod executor_dual;
+
 pub mod embedded_hal_adapter;
+pub mod executor;
 pub mod link;
 pub mod manifest;
+pub mod transport;
+pub mod validation;
 
 pub trait LialHardware {
     fn gpio_set(&mut self, pin: u32, state: u32);
@@ -85,6 +97,145 @@ pub struct LialRuntime<H: LialHardware> {
     engine: Engine,
     store: Store<HostState<H>>,
     linker: Linker<HostState<H>>,
+}
+
+/// Shared main loop: reads frames from transport, dispatches opcodes, executes
+/// Wasm, and writes results back. Used by all board entry points.
+pub fn main_loop<T: transport::LialTransport, H: LialHardware + 'static>(
+    transport: &mut T,
+    hal: H,
+    manifest_json: &str,
+) -> ! {
+    use executor::{ExecStatus, LialExecutor, SingleCoreExecutor};
+
+    let mut exec = SingleCoreExecutor::new(hal, Some(500_000_000));
+
+    loop {
+        let frame = match transport.read_frame() {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+
+        match frame.opcode {
+            link::OP_DISCOVERY => {
+                let discovery =
+                    link::Frame::new(link::OP_DISCOVERY, manifest_json.as_bytes().to_vec());
+                let _ = transport.write_frame(&discovery);
+            }
+
+            link::OP_BYTECODE_PUSH => {
+                let v = validation::validate_wasm_imports(&frame.payload);
+                if !v.valid {
+                    let err_msg = format!(
+                        r#"{{"ok":false,"error":"rejected imports: {:?}"}}"#,
+                        v.rejected_imports
+                    );
+                    let resp = link::Frame::new(link::OP_EXEC_RESULT, err_msg.into_bytes());
+                    let _ = transport.write_frame(&resp);
+                } else {
+                    exec.submit(&frame.payload);
+                    if let Some(result) = exec.poll_result() {
+                        let json = exec_result_to_json(&result);
+                        let resp = link::Frame::new(link::OP_EXEC_RESULT, json.into_bytes());
+                        let _ = transport.write_frame(&resp);
+                    }
+                }
+            }
+
+            link::OP_STOP => {
+                exec.stop();
+                let resp = link::Frame::new(
+                    link::OP_STATUS_RESPONSE,
+                    format!(r#"{{"stopped":true}}"#).into_bytes(),
+                );
+                let _ = transport.write_frame(&resp);
+            }
+
+            link::OP_QUERY_STATUS => {
+                let status = exec.status();
+                let json = format!(
+                    r#"{{"status":"{}","running":{}}}"#,
+                    match status {
+                        ExecStatus::Idle => "idle",
+                        ExecStatus::Running => "running",
+                        ExecStatus::Completed => "completed",
+                        ExecStatus::Stopped => "stopped",
+                    },
+                    exec.is_running()
+                );
+                let resp = link::Frame::new(link::OP_STATUS_RESPONSE, json.into_bytes());
+                let _ = transport.write_frame(&resp);
+            }
+
+            link::OP_SET_PARAM => {
+                if frame.payload.len() >= 8 {
+                    let slot = u32::from_be_bytes([
+                        frame.payload[0],
+                        frame.payload[1],
+                        frame.payload[2],
+                        frame.payload[3],
+                    ]);
+                    let value = u32::from_be_bytes([
+                        frame.payload[4],
+                        frame.payload[5],
+                        frame.payload[6],
+                        frame.payload[7],
+                    ]);
+                    executor::set_param(slot, value);
+                }
+            }
+
+            link::OP_HOT_SWAP => {
+                let v = validation::validate_wasm_imports(&frame.payload);
+                if !v.valid {
+                    let err_msg = format!(
+                        r#"{{"ok":false,"error":"rejected imports: {:?}"}}"#,
+                        v.rejected_imports
+                    );
+                    let resp = link::Frame::new(link::OP_EXEC_RESULT, err_msg.into_bytes());
+                    let _ = transport.write_frame(&resp);
+                } else {
+                    exec.stop();
+                    exec.submit(&frame.payload);
+                    if let Some(result) = exec.poll_result() {
+                        let json = exec_result_to_json(&result);
+                        let resp = link::Frame::new(link::OP_EXEC_RESULT, json.into_bytes());
+                        let _ = transport.write_frame(&resp);
+                    }
+                }
+            }
+
+            _ => {
+                let err = link::Frame::new(
+                    link::OP_EXEC_RESULT,
+                    format!(r#"{{"error":"unknown opcode 0x{:02x}"}}"#, frame.opcode)
+                        .into_bytes(),
+                );
+                let _ = transport.write_frame(&err);
+            }
+        }
+    }
+}
+
+fn exec_result_to_json(result: &executor::ExecResult) -> String {
+    if result.ok {
+        let mut s = String::from(r#"{"ok":true,"logs":["#);
+        for (i, log) in result.logs.iter().enumerate() {
+            if i > 0 {
+                s.push(',');
+            }
+            s.push('"');
+            s.push_str(log);
+            s.push('"');
+        }
+        s.push_str("]}");
+        s
+    } else {
+        format!(
+            r#"{{"ok":false,"error":"{}"}}"#,
+            result.error.as_deref().unwrap_or("unknown")
+        )
+    }
 }
 
 impl<H: LialHardware + 'static> LialRuntime<H> {
@@ -293,6 +444,13 @@ impl<H: LialHardware + 'static> LialRuntime<H> {
             },
         );
 
+        let get_param = Func::wrap(
+            &mut *store,
+            |_caller: Caller<'_, HostState<H>>, slot: u32| -> u32 {
+                crate::executor::get_param(slot)
+            },
+        );
+
         linker.define("env", "lial_gpio_set", gpio_set).unwrap();
         linker.define("env", "lial_gpio_get", gpio_get).unwrap();
         linker.define("env", "lial_delay_ms", delay_ms).unwrap();
@@ -314,6 +472,7 @@ impl<H: LialHardware + 'static> LialRuntime<H> {
         linker
             .define("env", "lial_uart_read", uart_read)
             .unwrap();
+        linker.define("env", "lial_get_param", get_param).unwrap();
     }
 
     pub fn execute(&mut self, wasm_bytes: &[u8], export: &str) -> Result<Vec<String>, LialError> {
