@@ -53,10 +53,10 @@ LIAL (LLM IoT Abstraction Layer) lets an LLM control any microcontroller via Web
 - Host: `lial-host/{lial_host.py, lial_compiler.py, lial_cli.py, board_registry.py, hil_test.py}`
 - Flash: `lial-host/flash_backends/{__init__.py, esp32.py}`
 - CLI: `lial-host/lial_commands/{init.py, download.py}`
-- Plans: `docs/week3/plan.md`
+- Plans: `docs/week3/misc/buildplan.md` (phased build spec in git), `docs/week3/plan.md` (narrative)
 - Repo: `git@github.com:tanmay-xvx/LIAL.git` (private), branch `week3`
 
-## What Week 3 covers (see `docs/week3/plan.md` for full details)
+## What Week 3 covers (see `docs/week3/misc/buildplan.md` for phased spec; `docs/week3/plan.md` for narrative)
 1. **Raspberry Pi Pico port** — compile wasmi for `thumbv6m-none-eabi`, create `Rp2040Hal`, prove Wasm execution on ARM Cortex-M0+. Validates "any silicon" promise.
 2. **Dual-core execution model** — transport on Core 0, Wasm on Core 1. `LialExecutor` trait with single/dual-core impls.
 3. **Wi-Fi transport + `LialTransport` trait** — untether from USB; LIAL-Link over persistent TCP.

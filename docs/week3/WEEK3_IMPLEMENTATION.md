@@ -5,10 +5,7 @@ This document serves two purposes:
 1. **Technical record** — what was built, how, and how to reproduce it.
 2. **Plan validation** — mapping every phase of the **Week 3 Phased Build** plan to the codebase, with an honest **done / partial / not done** status.
 
-The canonical phased plan referenced here is:
-
-- **Cursor plan:** `.cursor/plans/week_3_phased_build_3ae58fd8.plan.md` (5 phases + dependency graph + file/dependency tables).
-- **Repo copy / narrative:** `docs/week3/plan.md` (may differ in wording; use the Cursor plan for todo IDs).
+The canonical phased build specification (5 phases + dependency graph + file/dependency tables) lives in **`docs/week3/misc/buildplan.md`** (version-controlled copy). Narrative and deltas may also appear in `docs/week3/plan.md`.
 
 ---
 
@@ -191,7 +188,8 @@ The canonical phased plan referenced here is:
 
 | File | Purpose |
 |------|---------|
-| `docs/week3/plan.md` | Expanded phased narrative in repo |
+| **`docs/week3/misc/buildplan.md`** | **Week 3 phased build plan** (phases 1–5, mermaid graph, new-file and dependency tables) — canonical spec in git |
+| `docs/week3/plan.md` | Expanded phased narrative in repo (optional overlap) |
 | `docs/week3/research.md` | Flashing, transports, multi-core, ESP-Claw notes |
 | `docs/week3/context.md` | Pre–Week 3 snapshot |
 
@@ -213,4 +211,4 @@ The canonical phased plan referenced here is:
 
 ---
 
-*This document is aligned to `.cursor/plans/week_3_phased_build_3ae58fd8.plan.md` for traceability. Last updated for plan-vs-implementation audit.*
+*This document is aligned to `docs/week3/misc/buildplan.md` for traceability. Last updated for plan-vs-implementation audit.*
