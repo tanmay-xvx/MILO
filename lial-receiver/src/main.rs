@@ -1,5 +1,5 @@
-#![cfg_attr(feature = "esp32c3", no_std)]
-#![cfg_attr(feature = "esp32c3", no_main)]
+#![cfg_attr(any(feature = "esp32c3", feature = "rp2040"), no_std)]
+#![cfg_attr(any(feature = "esp32c3", feature = "rp2040"), no_main)]
 
 // ── ESP32-C3 entry point ──────────────────────────────────────────────
 #[cfg(feature = "esp32c3")]
@@ -8,7 +8,6 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[cfg(feature = "esp32c3")]
 mod esp_entry {
     extern crate alloc;
-    use alloc::vec;
     use esp_alloc as _;
     use esp_hal::analog::adc::{AdcConfig, Attenuation};
     use esp_hal::i2c::master::{Config as I2cConfig, I2c};
@@ -26,35 +25,12 @@ mod esp_entry {
         build as build_manifest, AdcCapability, Capabilities, GpioCapability, I2cCapability,
         ManifestHeader, PwmCapability,
     };
+    use lial_receiver::transport::{EmbeddedIoTransport, LialTransport};
     use lial_receiver::LialRuntime;
 
     #[panic_handler]
     fn panic(_info: &core::panic::PanicInfo) -> ! {
         loop {}
-    }
-
-    type Hal<'d> = Esp32C3Hal<
-        'd,
-        esp_hal::usb_serial_jtag::UsbSerialJtagTx<'d, esp_hal::Blocking>,
-        esp_hal::usb_serial_jtag::UsbSerialJtagRx<'d, esp_hal::Blocking>,
-    >;
-
-    fn read_frame(hal: &mut Hal) -> Frame {
-        let mut header = [0u8; 5];
-        hal.read_exact(&mut header);
-        let opcode = header[0];
-        let len =
-            u32::from_be_bytes([header[1], header[2], header[3], header[4]]) as usize;
-        let mut payload = vec![0u8; len];
-        if len > 0 {
-            hal.read_exact(&mut payload);
-        }
-        Frame::new(opcode, payload)
-    }
-
-    fn write_frame(hal: &mut Hal, frame: &Frame) {
-        let bytes = frame.serialize();
-        hal.write_bytes(&bytes);
     }
 
     #[esp_hal::main]
@@ -65,12 +41,6 @@ mod esp_entry {
         let peripherals = esp_hal::init(config);
 
         // ── LEDC PWM on GPIO 5: external LED ────────────────────────────
-        // To revert to plain GPIO, replace this block with:
-        //   use esp_hal::gpio::{Level, Output, OutputConfig};
-        //   use lial_receiver::embedded_hal_adapter::OutputPinAdapter;
-        //   let led = Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default());
-        //   let led_pwm: alloc::boxed::Box<dyn lial_receiver::embedded_hal_adapter::DynPwm>
-        //       = alloc::boxed::Box::new(lial_receiver::embedded_hal_adapter::GpioPwmFallback(led));
         let mut ledc = Ledc::new(peripherals.LEDC);
         ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
 
@@ -82,8 +52,6 @@ mod esp_entry {
                 frequency: Rate::from_hz(5000),
             })
             .expect("LEDC timer config failed");
-        // Leak the timer so the channel can hold a 'static reference to it.
-        // Safe: main() -> ! never returns, so this memory is never freed.
         let lstimer0 = alloc::boxed::Box::leak(alloc::boxed::Box::new(lstimer0));
 
         let mut channel0 = ledc.channel(channel::Number::Channel0, peripherals.GPIO5);
@@ -113,8 +81,9 @@ mod esp_entry {
         let usb_serial = UsbSerialJtag::new(peripherals.USB_DEVICE);
         let (rx, tx) = usb_serial.split();
 
-        // ── Assemble Hal ─────────────────────────────────────────────
-        let mut hal = Esp32C3Hal::new(led_pwm, i2c, adc1, adc_pin, tx, rx);
+        // ── Assemble transport and hardware separately ────────────────
+        let mut transport = EmbeddedIoTransport::new(tx, rx);
+        let mut hal = Esp32C3Hal::new(led_pwm, i2c, adc1, adc_pin);
 
         // ── I2C bus scan at boot ─────────────────────────────────────
         let i2c_devices = hal.adapter_mut().scan_i2c_bus(0);
@@ -153,56 +122,296 @@ mod esp_entry {
         };
         let manifest_json = build_manifest(&header, &caps);
 
-        // ── Main loop ────────────────────────────────────────────────
-        // The host initiates all exchanges. Supported opcodes:
-        //   OP_DISCOVERY    → reply with the capability manifest
-        //   OP_BYTECODE_PUSH → execute wasm, reply with exec result
+        // ── Main loop (transport-agnostic) ────────────────────────────
+        lial_receiver::main_loop(&mut transport, hal, &manifest_json);
+    }
+}
+
+// ── Raspberry Pi Pico (RP2040) entry point ────────────────────────────
+#[cfg(feature = "rp2040")]
+mod pico_entry {
+    extern crate alloc;
+    use embedded_alloc::LlffHeap as Heap;
+
+    #[global_allocator]
+    static HEAP: Heap = Heap::empty();
+
+    /// Boot2 bootloader for W25Q080 flash (standard on Raspberry Pi Pico).
+    #[unsafe(link_section = ".boot2")]
+    #[used]
+    pub static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
+
+    use cortex_m_rt::entry;
+    use rp2040_hal::clocks::init_clocks_and_plls;
+    use rp2040_hal::gpio::Pins;
+    use rp2040_hal::pac;
+    use rp2040_hal::watchdog::Watchdog;
+    use rp2040_hal::Sio;
+    use rp2040_hal::Timer;
+    use rp2040_hal::fugit::RateExtU32;
+    use usb_device::class_prelude::UsbBusAllocator;
+    use usb_device::prelude::*;
+    use usbd_serial::SerialPort;
+
+    use lial_receiver::link::{Frame, OP_BYTECODE_PUSH, OP_DISCOVERY, OP_EXEC_RESULT};
+    use lial_receiver::manifest::{
+        build as build_manifest, AdcCapability, Capabilities, GpioCapability, I2cCapability,
+        ManifestHeader,
+    };
+    use lial_receiver::rp2040::{self, Rp2040AdcChannel, Rp2040Hal};
+    use lial_receiver::LialRuntime;
+
+    const XTAL_FREQ_HZ: u32 = 12_000_000;
+    const HEAP_SIZE: usize = 150 * 1024;
+
+    #[panic_handler]
+    fn panic(_info: &core::panic::PanicInfo) -> ! {
         loop {
-            let frame = read_frame(&mut hal);
+            cortex_m::asm::wfe();
+        }
+    }
 
-            if frame.opcode == OP_DISCOVERY {
-                let discovery = Frame::new(OP_DISCOVERY, manifest_json.as_bytes().to_vec());
-                write_frame(&mut hal, &discovery);
-                continue;
+    #[entry]
+    fn main() -> ! {
+        // Initialize heap
+        {
+            use core::mem::MaybeUninit;
+            static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] =
+                [MaybeUninit::uninit(); HEAP_SIZE];
+            unsafe {
+                let heap_start = core::ptr::addr_of!(HEAP_MEM) as usize;
+                HEAP.init(heap_start, HEAP_SIZE);
+            }
+        }
+
+        let mut pac = pac::Peripherals::take().unwrap();
+        let mut watchdog = Watchdog::new(pac.WATCHDOG);
+        let sio = Sio::new(pac.SIO);
+
+        let clocks = init_clocks_and_plls(
+            XTAL_FREQ_HZ,
+            pac.XOSC,
+            pac.CLOCKS,
+            pac.PLL_SYS,
+            pac.PLL_USB,
+            &mut pac.RESETS,
+            &mut watchdog,
+        )
+        .ok()
+        .unwrap();
+
+        let timer = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
+        let timer: &'static Timer = unsafe {
+            static mut TIMER_STORAGE: core::mem::MaybeUninit<Timer> =
+                core::mem::MaybeUninit::uninit();
+            let ptr = core::ptr::addr_of_mut!(TIMER_STORAGE);
+            (*ptr).write(timer);
+            &*(*ptr).as_ptr()
+        };
+
+        let pins = Pins::new(pac.IO_BANK0, pac.PADS_BANK0, sio.gpio_bank0, &mut pac.RESETS);
+
+        // GPIO 25: onboard LED
+        let led_pin = pins.gpio25.into_push_pull_output();
+
+        // I2C0: GPIO 4 (SDA), GPIO 5 (SCL) — pull-ups required for I2C
+        let sda_pin = pins.gpio4.into_pull_up_input().into_function();
+        let scl_pin = pins.gpio5.into_pull_up_input().into_function();
+        let i2c = rp2040_hal::i2c::I2C::i2c0(
+            pac.I2C0,
+            sda_pin,
+            scl_pin,
+            100.kHz(),
+            &mut pac.RESETS,
+            &clocks.system_clock,
+        );
+
+        // ADC channel 0 on GPIO 26 (potentiometer / analog input)
+        let adc = rp2040_hal::adc::Adc::new(pac.ADC, &mut pac.RESETS);
+        let adc_pin = rp2040_hal::adc::AdcPin::new(pins.gpio26.into_floating_input()).unwrap();
+        let adc_channel = Rp2040AdcChannel { adc, pin: adc_pin };
+
+        let mut hal = Rp2040Hal::new(led_pin, i2c, adc_channel, timer);
+
+        // Skip I2C bus scan — it can leave write-only devices (SSD1306) in
+        // a confused state, corrupting the bus for subsequent transfers.
+        let i2c_devices = alloc::vec![0x3C];
+
+        // Discovery manifest
+        let header = ManifestHeader {
+            board: "rp2040-pico",
+            family: "rp2040",
+            firmware_version: env!("CARGO_PKG_VERSION"),
+            ram_kb: 264,
+            flash_kb: 2048,
+            max_wasm_memory_kb: 64,
+            max_wasm_stack_kb: 8,
+            fuel_default: 500_000_000,
+        };
+        let caps = Capabilities {
+            gpio: GpioCapability {
+                pins: alloc::vec![25],
+            },
+            adc: AdcCapability {
+                pins: alloc::vec![26],
+                resolution_bits: 12,
+                vref_mv: 3300,
+            },
+            i2c: alloc::vec![I2cCapability {
+                bus_id: 0,
+                sda_pin: 4,
+                scl_pin: 5,
+                devices_present: i2c_devices,
+            }],
+            ..Default::default()
+        };
+        let manifest_json = build_manifest(&header, &caps);
+
+        // USB CDC Serial transport
+        static mut USB_BUS: Option<UsbBusAllocator<rp2040_hal::usb::UsbBus>> = None;
+        let usb_bus_ref = unsafe {
+            let ptr = core::ptr::addr_of_mut!(USB_BUS);
+            (*ptr) = Some(UsbBusAllocator::new(rp2040_hal::usb::UsbBus::new(
+                pac.USBCTRL_REGS,
+                pac.USBCTRL_DPRAM,
+                clocks.usb_clock,
+                true,
+                &mut pac.RESETS,
+            )));
+            (*ptr).as_ref().unwrap()
+        };
+
+        let mut serial = SerialPort::new(usb_bus_ref);
+        let mut usb_dev = UsbDeviceBuilder::new(usb_bus_ref, UsbVidPid(0x2E8A, 0x000A))
+            .strings(&[StringDescriptors::default()
+                .manufacturer("LIAL")
+                .product("LIAL Receiver (Pico)")
+                .serial_number("LIAL-PICO-001")])
+            .unwrap()
+            .device_class(usbd_serial::USB_CLASS_CDC)
+            .build();
+
+        // Chunked USB CDC write: splits large frames into 64-byte USB packets,
+        // polling the USB bus between chunks so the host can drain them.
+        fn usb_write_all(
+            serial: &mut SerialPort<rp2040_hal::usb::UsbBus>,
+            usb_dev: &mut UsbDevice<rp2040_hal::usb::UsbBus>,
+            data: &[u8],
+        ) {
+            let mut offset = 0;
+            while offset < data.len() {
+                usb_dev.poll(&mut [serial]);
+                match serial.write(&data[offset..]) {
+                    Ok(n) if n > 0 => offset += n,
+                    _ => {}
+                }
+            }
+            // Final poll to flush the last packet
+            usb_dev.poll(&mut [serial]);
+        }
+
+        // Main loop: poll USB and handle LIAL-Link frames
+        let mut frame_buf: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+        let mut read_buf = [0u8; 64];
+
+        loop {
+            usb_dev.poll(&mut [&mut serial]);
+
+            match serial.read(&mut read_buf) {
+                Ok(count) if count > 0 => {
+                    frame_buf.extend_from_slice(&read_buf[..count]);
+                }
+                _ => {
+                    continue;
+                }
             }
 
-            if frame.opcode != OP_BYTECODE_PUSH {
-                let err = Frame::new(
-                    OP_EXEC_RESULT,
-                    alloc::format!(
-                        r#"{{"error":"unexpected opcode 0x{:02x}"}}"#,
-                        frame.opcode
-                    )
-                    .into_bytes(),
-                );
-                write_frame(&mut hal, &err);
-                continue;
-            }
+            // Try to parse a complete frame from the buffer
+            while frame_buf.len() >= 5 {
+                let opcode = frame_buf[0];
+                let plen = u32::from_be_bytes([
+                    frame_buf[1],
+                    frame_buf[2],
+                    frame_buf[3],
+                    frame_buf[4],
+                ]) as usize;
 
-            let mut runtime = LialRuntime::new(hal, Some(500_000_000));
-            let result_json = match runtime.execute(&frame.payload, "run_logic") {
-                Ok(logs) => {
-                    alloc::format!(r#"{{"ok":true,"logs":{}}}"#, {
-                        let mut s = alloc::string::String::from("[");
+                if frame_buf.len() < 5 + plen {
+                    break;
+                }
+
+                let payload = frame_buf[5..5 + plen].to_vec();
+                frame_buf.drain(..5 + plen);
+
+                let frame = Frame::new(opcode, payload);
+
+                if frame.opcode == OP_DISCOVERY {
+                    let resp = Frame::new(OP_DISCOVERY, manifest_json.as_bytes().to_vec());
+                    let bytes = resp.serialize();
+                    usb_write_all(&mut serial, &mut usb_dev, &bytes);
+                    continue;
+                }
+
+                if frame.opcode != OP_BYTECODE_PUSH {
+                    let err = Frame::new(
+                        OP_EXEC_RESULT,
+                        alloc::format!(
+                            r#"{{"error":"unexpected opcode 0x{:02x}"}}"#,
+                            frame.opcode
+                        )
+                        .into_bytes(),
+                    );
+                    let bytes = err.serialize();
+                    usb_write_all(&mut serial, &mut usb_dev, &bytes);
+                    continue;
+                }
+
+                // Register USB poll callback so delays keep USB alive
+                struct UsbCtx {
+                    serial: *mut SerialPort<'static, rp2040_hal::usb::UsbBus>,
+                    usb_dev: *mut UsbDevice<'static, rp2040_hal::usb::UsbBus>,
+                }
+                unsafe fn usb_poll_cb(ctx: *mut ()) {
+                    unsafe {
+                        let c = &mut *(ctx as *mut UsbCtx);
+                        (*c.usb_dev).poll(&mut [&mut *c.serial]);
+                    }
+                }
+                let mut usb_ctx = UsbCtx {
+                    serial: &mut serial as *mut _,
+                    usb_dev: &mut usb_dev as *mut _,
+                };
+                unsafe {
+                    rp2040::set_usb_poll(usb_poll_cb, &mut usb_ctx as *mut UsbCtx as *mut ());
+                }
+
+                let mut runtime = LialRuntime::new(hal, Some(500_000_000));
+                let result_json = match runtime.execute(&frame.payload, "run_logic") {
+                    Ok(logs) => {
+                        let mut s = alloc::string::String::from(r#"{"ok":true,"logs":["#);
                         for (i, log) in logs.iter().enumerate() {
-                            if i > 0 { s.push(','); }
+                            if i > 0 {
+                                s.push(',');
+                            }
                             s.push('"');
                             s.push_str(log);
                             s.push('"');
                         }
-                        s.push(']');
+                        s.push_str("]}");
                         s
-                    })
-                }
-                Err(e) => {
-                    alloc::format!(r#"{{"ok":false,"error":"{}"}}"#, e)
-                }
-            };
+                    }
+                    Err(e) => {
+                        alloc::format!(r#"{{"ok":false,"error":"{}"}}"#, e)
+                    }
+                };
 
-            hal = runtime.into_hardware();
+                rp2040::clear_usb_poll();
+                hal = runtime.into_hardware();
 
-            let resp = Frame::new(OP_EXEC_RESULT, result_json.into_bytes());
-            write_frame(&mut hal, &resp);
+                let resp = Frame::new(OP_EXEC_RESULT, result_json.into_bytes());
+                let bytes = resp.serialize();
+                usb_write_all(&mut serial, &mut usb_dev, &bytes);
+            }
         }
     }
 }
@@ -210,15 +419,15 @@ mod esp_entry {
 // ── Laptop (std) entry point ──────────────────────────────────────────
 #[cfg(feature = "std")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use lial_receiver::link::{self, Frame, OP_BYTECODE_PUSH, OP_DISCOVERY, OP_EXEC_RESULT};
+    use lial_receiver::link::{Frame, OP_BYTECODE_PUSH, OP_DISCOVERY, OP_EXEC_RESULT};
     use lial_receiver::manifest::{
         build as build_manifest, AdcCapability, Capabilities, GpioCapability, ManifestHeader,
         PwmCapability, UartCapability,
     };
     use lial_receiver::mock::LaptopMock;
+    use lial_receiver::transport::{LialTransport, StdioTransport};
     use lial_receiver::LialRuntime;
     use std::fs;
-    use std::io;
 
     let laptop_header = ManifestHeader {
         board: "laptop-mock",
@@ -275,17 +484,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if stdin_mode {
-        let mut stdin = io::stdin().lock();
-        let mut stdout = io::stdout().lock();
+        let mut transport = StdioTransport::new();
 
         loop {
-            let frame = match link::read_frame(&mut stdin) {
+            let frame = match transport.read_frame() {
                 Ok(f) => f,
-                Err(link::LinkError::ConnectionClosed) => break,
+                Err(lial_receiver::link::LinkError::ConnectionClosed) => break,
                 Err(e) => {
                     let err_json = format!(r#"{{"error":"{}"}}"#, e);
                     let resp = Frame::new(OP_EXEC_RESULT, err_json.into_bytes());
-                    link::write_frame(&mut stdout, &resp)?;
+                    let _ = transport.write_frame(&resp);
                     continue;
                 }
             };
@@ -293,7 +501,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if frame.opcode == OP_DISCOVERY {
                 let manifest_frame =
                     Frame::new(OP_DISCOVERY, hardware_manifest.as_bytes().to_vec());
-                link::write_frame(&mut stdout, &manifest_frame)?;
+                let _ = transport.write_frame(&manifest_frame);
                 continue;
             }
 
@@ -303,7 +511,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     frame.opcode
                 );
                 let resp = Frame::new(OP_EXEC_RESULT, err_json.into_bytes());
-                link::write_frame(&mut stdout, &resp)?;
+                let _ = transport.write_frame(&resp);
                 continue;
             }
 
@@ -323,7 +531,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             let resp = Frame::new(OP_EXEC_RESULT, result_json.into_bytes());
-            link::write_frame(&mut stdout, &resp)?;
+            let _ = transport.write_frame(&resp);
         }
 
         return Ok(());
@@ -355,5 +563,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::process::exit(1);
 }
 
-#[cfg(all(not(feature = "std"), not(feature = "esp32c3")))]
+#[cfg(all(not(feature = "std"), not(feature = "esp32c3"), not(feature = "rp2040")))]
 fn main() {}

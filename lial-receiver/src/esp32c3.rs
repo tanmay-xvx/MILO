@@ -38,21 +38,17 @@ impl<'d> DynAdc for Esp32AdcAdapter<'d> {
     }
 }
 
-/// ESP32-C3 hardware + link transport.
-pub struct Esp32C3Hal<'d, W: embedded_io::Write, R: embedded_io::Read> {
+/// ESP32-C3 hardware — pure hardware abstraction, no transport.
+pub struct Esp32C3Hal<'d> {
     adapter: EmbeddedHalAdapter<'d>,
-    writer: W,
-    reader: R,
 }
 
-impl<'d, W: embedded_io::Write, R: embedded_io::Read> Esp32C3Hal<'d, W, R> {
+impl<'d> Esp32C3Hal<'d> {
     pub fn new(
         led_pwm: Box<dyn DynPwm + 'd>,
         i2c: I2c<'d, esp_hal::Blocking>,
         adc: Adc<'d, esp_hal::peripherals::ADC1<'d>, esp_hal::Blocking>,
         adc_pin: AdcPin<esp_hal::peripherals::GPIO2<'d>, esp_hal::peripherals::ADC1<'d>>,
-        writer: W,
-        reader: R,
     ) -> Self {
         let adapter = EmbeddedHalAdapter::builder()
             .pwm(5, led_pwm)
@@ -63,25 +59,7 @@ impl<'d, W: embedded_io::Write, R: embedded_io::Read> Esp32C3Hal<'d, W, R> {
             .log_sink(silent_log as LogSink)
             .build();
 
-        Self {
-            adapter,
-            writer,
-            reader,
-        }
-    }
-
-    pub fn write_bytes(&mut self, data: &[u8]) {
-        let _ = self.writer.write_all(data);
-    }
-
-    pub fn read_exact(&mut self, buf: &mut [u8]) {
-        let mut pos = 0;
-        while pos < buf.len() {
-            match self.reader.read(&mut buf[pos..]) {
-                Ok(n) if n > 0 => pos += n,
-                _ => {}
-            }
-        }
+        Self { adapter }
     }
 
     pub fn adapter(&self) -> &EmbeddedHalAdapter<'d> {
@@ -93,7 +71,7 @@ impl<'d, W: embedded_io::Write, R: embedded_io::Read> Esp32C3Hal<'d, W, R> {
     }
 }
 
-impl<'d, W: embedded_io::Write, R: embedded_io::Read> LialHardware for Esp32C3Hal<'d, W, R> {
+impl<'d> LialHardware for Esp32C3Hal<'d> {
     fn gpio_set(&mut self, pin: u32, state: u32) {
         if pin == 5 {
             self.adapter.pwm_set(5, if state != 0 { 10000 } else { 0 });

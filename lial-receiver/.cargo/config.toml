@@ -4,6 +4,13 @@ rustflags = [
     "-C", "link-arg=-Tlinkall.x",
 ]
 
+[target.thumbv6m-none-eabi]
+rustflags = [
+    "-C", "link-arg=--nmagic",
+    "-C", "link-arg=-Tlink.x",
+]
+runner = "elf2uf2-rs -d"
+
 [unstable]
 build-std = ["core", "alloc"]
 build-std-features = ["compiler-builtins-mem"]

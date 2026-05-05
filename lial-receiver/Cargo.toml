@@ -6,19 +6,31 @@ edition = "2024"
 [features]
 default = ["std"]
 std = ["wasmi/std", "serde_json/std"]
-esp32c3 = ["dep:esp-hal", "dep:esp-alloc", "dep:portable-atomic", "dep:esp-bootloader-esp-idf", "dep:embedded-io", "dep:nb"]
+esp32c3 = ["dep:esp-hal", "dep:esp-alloc", "dep:portable-atomic", "dep:esp-bootloader-esp-idf", "dep:nb"]
+esp32c3-wifi = ["esp32c3", "dep:esp-wifi", "dep:smoltcp"]
+rp2040 = ["dep:rp2040-hal", "dep:rp2040-boot2", "dep:cortex-m", "dep:cortex-m-rt", "dep:embedded-alloc", "dep:usb-device", "dep:usbd-serial", "dep:portable-atomic", "dep:embedded-hal-0-2"]
 
 [dependencies]
 wasmi = { version = "1.0.9", default-features = false }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
 embedded-hal = "1.0"
 embedded-hal-nb = "1.0"
+embedded-io = "0.6"
 esp-hal = { version = "1.0.0", features = ["esp32c3", "unstable"], optional = true }
 esp-alloc = { version = "0.7", optional = true }
-portable-atomic = { version = "1", optional = true, default-features = false }
-embedded-io = { version = "0.6", optional = true }
+portable-atomic = { version = "1", optional = true, default-features = false, features = ["critical-section"] }
 nb = { version = "1", optional = true }
 esp-bootloader-esp-idf = { version = "0.4", features = ["esp32c3"], optional = true }
+esp-wifi = { version = "0.15", optional = true, default-features = false, features = ["esp32c3", "wifi"] }
+smoltcp = { version = "0.12", optional = true, default-features = false, features = ["medium-ethernet", "proto-ipv4", "socket-tcp", "proto-dhcpv4"] }
+rp2040-hal = { version = "0.10", optional = true, features = ["rt", "critical-section-impl"] }
+rp2040-boot2 = { version = "0.3", optional = true }
+cortex-m = { version = "0.7", optional = true }
+cortex-m-rt = { version = "0.7", optional = true }
+embedded-alloc = { version = "0.6", optional = true }
+usb-device = { version = "0.3", optional = true }
+usbd-serial = { version = "0.2", optional = true }
+embedded-hal-0-2 = { package = "embedded-hal", version = "0.2", optional = true }
 
 [patch.crates-io]
 wasmi = { path = "../patches/wasmi" }

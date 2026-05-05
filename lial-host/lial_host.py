@@ -26,8 +26,6 @@ import struct
 import sys
 import time
 
-import serial
-
 # Ensure this directory is on the path before importing our own submodules.
 _HOST_DIR = os.path.dirname(os.path.abspath(__file__))
 if _HOST_DIR not in sys.path:
@@ -35,46 +33,16 @@ if _HOST_DIR not in sys.path:
 
 from lial_commands import download as download_cmd
 from lial_commands import init as init_cmd
-
-# ── LIAL-Link protocol ─────────────────────────────────────────────────
-OP_DISCOVERY = 0x01
-OP_BYTECODE_PUSH = 0x02
-OP_EXEC_RESULT = 0x03
+from transport import (
+    LialTransport,
+    SerialTransport,
+    TcpTransport,
+    OP_DISCOVERY,
+    OP_BYTECODE_PUSH,
+    OP_EXEC_RESULT,
+)
 
 MAX_COMPILE_RETRIES = 2
-
-
-def _make_frame(opcode: int, payload: bytes) -> bytes:
-    return struct.pack(">BI", opcode, len(payload)) + payload
-
-
-def _read_frame(ser: serial.Serial, timeout: float = 30.0):
-    """Read one LIAL-Link frame.  Returns (opcode, payload) or raises."""
-    deadline = time.time() + timeout
-    buf = b""
-    while len(buf) < 5:
-        left = deadline - time.time()
-        if left <= 0:
-            raise TimeoutError(f"header timeout ({len(buf)}/5 bytes)")
-        ser.timeout = left
-        chunk = ser.read(5 - len(buf))
-        if chunk:
-            buf += chunk
-
-    opcode = buf[0]
-    plen = struct.unpack(">I", buf[1:5])[0]
-
-    payload = b""
-    while len(payload) < plen:
-        left = deadline - time.time()
-        if left <= 0:
-            raise TimeoutError(f"payload timeout ({len(payload)}/{plen})")
-        ser.timeout = left
-        chunk = ser.read(plen - len(payload))
-        if chunk:
-            payload += chunk
-
-    return opcode, payload
 
 
 # ── LLM integration ────────────────────────────────────────────────────
@@ -117,9 +85,11 @@ Capability-aware pin/channel/bus selection:
   (`capabilities.pwm.resolution_bits`).
 - For ADC, raw values range 0..(2^resolution_bits - 1). Convert to millivolts
   with: `mv = raw * vref_mv / ((1 << resolution_bits) - 1)` if needed.
-- If the requested peripheral is NOT present in `device_info`, respond with
-  a `lial_log` message stating the requirement and do nothing else -- do not
-  fabricate pin numbers.
+- If a GPIO/PWM/ADC pin is NOT listed in `device_info`, log a message and
+  do nothing -- do not fabricate pin numbers.
+- For I2C: if the user explicitly names a device (e.g. SSD1306, BME280),
+  use its well-known address even if `devices_present` is empty -- the boot
+  scan can miss devices. Only bail if no I2C bus exists at all.
 
 Rules:
 - Write ONLY the function body. Do NOT write `extern` declarations, `#![no_std]`,
@@ -168,10 +138,26 @@ Protocol:
 - Data:      prepend control byte 0x40 before pixel data bytes.
 - All transfers use lial_i2c_transfer(addr, tx_ptr, tx_len, 0, 0).
 
-Init sequence (26 bytes, send once):
+Init sequence (26 bytes, MUST send before any data writes or display will stay blank):
   [0x00, 0xAE, 0xD5,0x80, 0xA8,0x3F, 0xD3,0x00, 0x40,
    0x8D,0x14, 0x20,0x00, 0xA1, 0xC8, 0xDA,0x12,
    0x81,0xCF, 0xD9,0xF1, 0xDB,0x40, 0xA4, 0xA6, 0xAF]
+  ALWAYS send this init sequence at the start of run_logic() when using the SSD1306.
+
+CRITICAL: After sending the init sequence, you MUST clear the entire display before
+writing any data. The display RAM contains random noise at power-on. If you skip this
+step, the entire screen will show static/noise except the few bytes you write.
+Clear the screen page by page (8 pages):
+  for page in 0..8u8 {{
+      let cursor: [u8; 4] = [0x00, 0xB0 | page, 0x00, 0x10];
+      unsafe {{ lial_i2c_transfer(0x3C, cursor.as_ptr() as u32, 4, 0, 0); }}
+      let mut row = [0u8; 129];
+      row[0] = 0x40;
+      unsafe {{ lial_i2c_transfer(0x3C, row.as_ptr() as u32, 129, 0, 0); }}
+  }}
+  This clears all 8 pages (1024 pixels). ALWAYS do this after init, before writing text.
+  When updating the display in a loop (e.g. live ADC values), clear only the pages you
+  write to, by sending 128 zero-bytes before re-drawing that page's content.
 
 Set cursor to (page, col):
   [0x00, 0xB0 | page, col & 0x0F, 0x10 | (col >> 4)]
@@ -290,20 +276,6 @@ def _detect_port() -> str | None:
     return None
 
 
-def _request_discovery(ser: serial.Serial, timeout=5.0):
-    """Send a discovery request frame and read the response; returns dict or None."""
-    req = struct.pack(">BI", OP_DISCOVERY, 0)
-    ser.write(req)
-    ser.flush()
-    try:
-        opcode, payload = _read_frame(ser, timeout=timeout)
-        if opcode == OP_DISCOVERY:
-            return json.loads(payload)
-    except (TimeoutError, json.JSONDecodeError):
-        pass
-    return None
-
-
 def _maybe_autoflash(port: str | None, enabled: bool) -> None:
     """Run `lial init --yes` on startup if we see a blank board of a known family.
 
@@ -338,23 +310,49 @@ def _maybe_autoflash(port: str | None, enabled: bool) -> None:
 
 # ── `run` subcommand (interactive LLM loop) ─────────────────────────────
 
+def _open_transport(args: argparse.Namespace) -> LialTransport | None:
+    """Open the appropriate transport based on CLI flags."""
+    transport_type = getattr(args, "transport", "serial")
+
+    if transport_type == "wifi":
+        ip = getattr(args, "ip", None)
+        if not ip:
+            from discovery import discover_mdns
+            print("  Scanning for LIAL devices via mDNS …")
+            devices = discover_mdns(timeout=3.0)
+            if devices:
+                dev = devices[0]
+                ip = dev.host
+                port = dev.port
+                print(f"  Found: {dev.name} at {ip}:{port} ({dev.board})")
+            else:
+                print("  No devices found. Use --ip <address> to specify manually.")
+                return None
+        else:
+            port = getattr(args, "tcp_port", 9100)
+        print(f"  Connecting to {ip}:{port} over TCP …")
+        return TcpTransport(ip, port)
+
+    port = args.port or _detect_port()
+    if not port:
+        print("No serial port found. Plug in the ESP32, run `lial init`, or pass --port.")
+        return None
+
+    print(f"  Opening {port} @ {args.baud} baud …")
+    return SerialTransport(port, args.baud)
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     from lial_compiler import compile_rust_to_wasm
 
     _maybe_autoflash(args.port, enabled=not args.no_autoflash)
 
-    port = args.port or _detect_port()
-    if not port:
-        print("No serial port found. Plug in the ESP32, run `lial init`, or pass --port.")
+    transport = _open_transport(args)
+    if transport is None:
         return 1
 
-    print(f"  Opening {port} @ {args.baud} baud …")
-    ser = serial.Serial(port, args.baud, timeout=5)
-    time.sleep(0.3)
-    ser.reset_input_buffer()
-
     try:
-        manifest = _request_discovery(ser, timeout=5.0)
+        manifest = transport.request_discovery(timeout=5.0)
         if manifest:
             device = manifest.get("device") or manifest.get("board") or "unknown"
             pins = manifest.get("pins") or manifest.get("capabilities", {}).get("gpio", {}).get("pins", [])
@@ -448,14 +446,14 @@ def cmd_run(args: argparse.Namespace) -> int:
 
             print(f"  Compiled OK — {len(wasm_bytes)} bytes")
 
-            print("  Pushing to ESP32 …")
-            ser.reset_input_buffer()
-            ser.write(_make_frame(OP_BYTECODE_PUSH, wasm_bytes))
-            ser.flush()
+            print("  Pushing to device …")
+            if hasattr(transport, "reset_input"):
+                transport.reset_input()
+            transport.write_frame(OP_BYTECODE_PUSH, wasm_bytes)
             print("  Running on device …")
 
             try:
-                opcode, payload = _read_frame(ser, timeout=120.0)
+                opcode, payload = transport.read_frame(timeout=120.0)
                 if opcode == OP_EXEC_RESULT:
                     result = json.loads(payload)
                     if result.get("ok"):
@@ -472,7 +470,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
             print()
     finally:
-        ser.close()
+        transport.close()
     return 0
 
 
@@ -480,6 +478,10 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> argparse.Argument
     p = subparsers.add_parser("run", help="Interactive LLM -> wasm -> device loop (default)")
     p.add_argument("--port", help="Serial port (auto-detected if omitted)")
     p.add_argument("--baud", type=int, default=115200)
+    p.add_argument("--transport", choices=["serial", "wifi"], default="serial",
+                   help="Transport type (default: serial)")
+    p.add_argument("--ip", help="Device IP address (for --transport wifi)")
+    p.add_argument("--tcp-port", type=int, default=9100, help="TCP port (default: 9100)")
     p.add_argument("--no-autoflash", action="store_true", help="Skip startup board detection / flashing")
     p.set_defaults(func=cmd_run)
     return p

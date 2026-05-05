@@ -12,6 +12,12 @@ use alloc::vec::Vec;
 pub const OP_DISCOVERY: u8 = 0x01;
 pub const OP_BYTECODE_PUSH: u8 = 0x02;
 pub const OP_EXEC_RESULT: u8 = 0x03;
+pub const OP_STREAM_DATA: u8 = 0x04;
+pub const OP_STOP: u8 = 0x05;
+pub const OP_QUERY_STATUS: u8 = 0x06;
+pub const OP_STATUS_RESPONSE: u8 = 0x07;
+pub const OP_SET_PARAM: u8 = 0x08;
+pub const OP_HOT_SWAP: u8 = 0x09;
 
 #[derive(Debug)]
 pub struct Frame {
