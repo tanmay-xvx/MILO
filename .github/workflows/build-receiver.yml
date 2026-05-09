@@ -1,4 +1,4 @@
-name: Build LIAL Receiver
+name: Build MILO Receiver
 
 on:
   push:
@@ -47,7 +47,7 @@ jobs:
       - name: Cache cargo registry
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: lial-receiver
+          workspaces: receiver
 
       - name: Install system deps (libudev for espflash)
         if: matrix.family == 'esp32'
@@ -62,7 +62,7 @@ jobs:
           cargo +stable install espflash --locked --version 3.3.0
 
       - name: Build receiver
-        working-directory: lial-receiver
+        working-directory: receiver
         run: |
           cargo +${{ matrix.rust_toolchain }} build \
             --release \
@@ -72,27 +72,27 @@ jobs:
 
       - name: Package ESP .bin image
         if: matrix.family == 'esp32'
-        working-directory: lial-receiver
+        working-directory: receiver
         run: |
           mkdir -p dist
           espflash save-image \
             --chip ${{ matrix.variant }} \
-            target/${{ matrix.target }}/release/lial-receiver \
-            dist/lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}
+            target/${{ matrix.target }}/release/milo-receiver \
+            dist/milo-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}
 
       - name: Package RP2040 UF2
         if: matrix.family == 'rp2040'
-        working-directory: lial-receiver
+        working-directory: receiver
         run: |
           mkdir -p dist
           cargo install elf2uf2-rs --locked || true
-          elf2uf2-rs target/${{ matrix.target }}/release/lial-receiver \
-            dist/lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}
+          elf2uf2-rs target/${{ matrix.target }}/release/milo-receiver \
+            dist/milo-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}
 
       - name: Record build metadata
-        working-directory: lial-receiver/dist
+        working-directory: receiver/dist
         run: |
-          artifact="lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}"
+          artifact="milo-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}"
           sha256sum "$artifact" | awk '{print $1}' > "$artifact.sha256"
           stat -c%s "$artifact" > "$artifact.size"
           echo "{\"variant\":\"${{ matrix.variant }}\",\"family\":\"${{ matrix.family }}\",\"filename\":\"$artifact\",\"size_bytes\":$(cat $artifact.size),\"sha256\":\"$(cat $artifact.sha256)\"}" > "$artifact.meta.json"
@@ -100,14 +100,14 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lial-receiver-${{ matrix.variant }}
+          name: milo-receiver-${{ matrix.variant }}
           path: |
-            lial-receiver/dist/lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}
-            lial-receiver/dist/lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}.sha256
-            lial-receiver/dist/lial-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}.meta.json
+            receiver/dist/milo-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}
+            receiver/dist/milo-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}.sha256
+            receiver/dist/milo-receiver-${{ matrix.variant }}.${{ matrix.artifact_ext }}.meta.json
 
   host-tests:
-    name: lial-host pytest
+    name: host pytest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -119,5 +119,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pyserial
       - name: Run tests
-        working-directory: lial-host
+        working-directory: host
         run: python -m pytest tests/ -v

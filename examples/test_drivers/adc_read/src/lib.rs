@@ -4,9 +4,9 @@
 fn panic(_: &core::panic::PanicInfo) -> ! { loop {} }
 
 unsafe extern "C" {
-    fn lial_adc_read(channel: u32) -> u32;
-    fn lial_delay_ms(ms: u32);
-    fn lial_log(ptr: u32, len: u32);
+    fn adc_read(channel: u32) -> u32;
+    fn delay_ms(ms: u32);
+    fn log_msg(ptr: u32, len: u32);
 }
 
 fn format_u32(value: u32, buf: &mut [u8]) -> usize {
@@ -35,8 +35,8 @@ pub extern "C" fn run_logic() {
     unsafe {
         let mut sum: u32 = 0;
         for _ in 0..10 {
-            sum += lial_adc_read(0);
-            lial_delay_ms(5);
+            sum += adc_read(0);
+            delay_ms(5);
         }
         let avg = sum / 10;
 
@@ -45,6 +45,6 @@ pub extern "C" fn run_logic() {
         let plen = prefix.len();
         buf[..plen].copy_from_slice(prefix);
         let dlen = format_u32(avg, &mut buf[plen..]);
-        lial_log(buf.as_ptr() as u32, (plen + dlen) as u32);
+        log_msg(buf.as_ptr() as u32, (plen + dlen) as u32);
     }
 }

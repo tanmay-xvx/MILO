@@ -1,18 +1,18 @@
-# LIAL: The LLM IoT Abstraction Layer
+# MILO: Modular Interface for LLM-IoT Operations
 
 **Project Manifesto & Technical Specification v1.0**
 
 **Version:** 0.1.0-Beta | **Status:** Active Development (Week 3)
 
-LIAL (pronounced "Lyle") is a high-performance, ultra-lightweight hardware abstraction layer designed to turn any silicon — from a $2 ESP32 to a sophisticated industrial PLC — into a native, programmable extension of an LLM's reasoning engine.
+MILO is a high-performance, ultra-lightweight hardware abstraction layer designed to turn any silicon — from a $2 ESP32 to a sophisticated industrial PLC — into a native, programmable extension of an LLM's reasoning engine.
 
-Unlike traditional IoT protocols that rely on static, pre-defined function calls (e.g., `TurnOnLED`), LIAL treats hardware as raw compute and I/O resources that the LLM can program dynamically via Just-In-Time (JIT) bytecode execution.
+Unlike traditional IoT protocols that rely on static, pre-defined function calls (e.g., `TurnOnLED`), MILO treats hardware as raw compute and I/O resources that the LLM can program dynamically via Just-In-Time (JIT) bytecode execution.
 
 ## 1. Core Vision
 
 The current bottleneck in "Agentic IoT" is the **API Wall**. An LLM can only do what a human developer previously coded into a tool. If a device has a sensor the developer didn't expose, the LLM is blind to it.
 
-LIAL breaks this wall by moving the "Intelligence-to-Hardware" boundary from the **Application Layer** down to the **Instruction Layer**.
+MILO breaks this wall by moving the "Intelligence-to-Hardware" boundary from the **Application Layer** down to the **Instruction Layer**.
 
 ## 2. Project Objectives
 
@@ -25,7 +25,7 @@ LIAL breaks this wall by moving the "Intelligence-to-Hardware" boundary from the
 
 ### A. The Target Side (The "Receiver")
 
-The LIAL Receiver must be installed on the IoT device.
+The MILO Receiver must be installed on the IoT device.
 
 - **Environment:** Rust (`no_std`) / `wasmi` interpreter.
 - **Role:** The **Execution Sandbox** and **Hardware Reporter**.
@@ -50,17 +50,17 @@ The Root Instance resides on a more powerful machine (Laptop/Server/Gateway).
 - **JIT Pipeline:** An automated toolchain (LLVM/Clang) that converts LLM-generated C/Rust code into `.wasm` blobs on the fly.
 - **Manifest Parser:** A utility to ingest SVD (System View Description) files and translate them into a "Hardware Grammar" the LLM understands.
 
-## 4. System Architecture: The "LIAL Stack"
+## 4. System Architecture: The "MILO Stack"
 
 | Layer | Component | Responsibility |
 |-------|-----------|----------------|
 | **Cognitive** | LLM (GPT-4o / Claude / Gemini) | Reasoning, logic generation, and error correction. |
-| **Translation** | LIAL-Host (Python) | Compiles code to Wasm and manages the Binary Frame. |
-| **Transport** | LIAL-Link (CBOR/TCP/UDP) | Extremely low-overhead binary transport. |
-| **Execution** | LIAL-Runtime (Wasm) | Runs the logic in a safe, sandboxed environment. |
+| **Translation** | MILO-Host (Python) | Compiles code to Wasm and manages the Binary Frame. |
+| **Transport** | MILO-Link (CBOR/TCP/UDP) | Extremely low-overhead binary transport. |
+| **Execution** | MILO-Runtime (Wasm) | Runs the logic in a safe, sandboxed environment. |
 | **Physical** | Hardware Registers | The actual silicon pins and peripherals. |
 
-### Transport Protocol (LIAL-Link)
+### Transport Protocol (MILO-Link)
 
 - **Serialization:** CBOR (Concise Binary Object Representation) for minimal overhead.
 - **Channels:** TCP/IP (Wired/Localhost), UDP/IP (Wi-Fi), GATT (BLE), Serial (UART).
@@ -75,33 +75,33 @@ A restricted set of hardware primitives exposed to the Wasm sandbox. The LLM com
 
 | Category | Function | Signature |
 |----------|----------|-----------|
-| GPIO | `lial_gpio_set` | `(pin: u32, state: u32)` |
-| GPIO | `lial_gpio_get` | `(pin: u32) -> u32` |
-| Timing | `lial_delay_ms` | `(ms: u32)` |
-| Timing | `lial_get_uptime_us` | `() -> u64` |
-| I2C Bus | `lial_i2c_transfer` | `(addr, tx_ptr, tx_len, rx_ptr, rx_len) -> i32` |
-| PWM | `lial_pwm_set` | `(channel: u32, duty: u32)` — duty 0–10000 |
-| ADC | `lial_adc_read` | `(channel: u32) -> u32` — 12-bit, 0–4095 |
-| SPI Bus | `lial_spi_transfer` | `(bus, tx_ptr, tx_len, rx_ptr, rx_len) -> i32` |
-| UART | `lial_uart_write` | `(bus: u32, ptr: u32, len: u32) -> i32` |
-| UART | `lial_uart_read` | `(bus, ptr, len, timeout_ms) -> i32` |
-| Logging | `lial_log` | `(ptr: u32, len: u32)` |
+| GPIO | `gpio_set` | `(pin: u32, state: u32)` |
+| GPIO | `gpio_get` | `(pin: u32) -> u32` |
+| Timing | `delay_ms` | `(ms: u32)` |
+| Timing | `get_uptime_us` | `() -> u64` |
+| I2C Bus | `i2c_transfer` | `(addr, tx_ptr, tx_len, rx_ptr, rx_len) -> i32` |
+| PWM | `pwm_set` | `(channel: u32, duty: u32)` — duty 0–10000 |
+| ADC | `adc_read` | `(channel: u32) -> u32` — 12-bit, 0–4095 |
+| SPI Bus | `spi_transfer` | `(bus, tx_ptr, tx_len, rx_ptr, rx_len) -> i32` |
+| UART | `uart_write` | `(bus: u32, ptr: u32, len: u32) -> i32` |
+| UART | `uart_read` | `(bus, ptr, len, timeout_ms) -> i32` |
+| Logging | `log_msg` | `(ptr: u32, len: u32)` |
 
 The alphabet must stay **under 15 functions** to ensure portability across all targets.
 
 ## 5. Security & Safety (The "Sandbox")
 
-Direct hardware access by an AI is inherently risky. LIAL solves this via **Capability-Based Security**:
+Direct hardware access by an AI is inherently risky. MILO solves this via **Capability-Based Security**:
 
 1. **Memory Isolation:** The Wasm runtime cannot access any memory outside its allotted heap.
-2. **Peripheral Whitelisting:** The LIAL Receiver only allows the Wasm module to call specific hardware addresses defined in the boot-time configuration.
+2. **Peripheral Whitelisting:** The MILO Receiver only allows the Wasm module to call specific hardware addresses defined in the boot-time configuration.
 3. **Instruction Metering (Gas):** A configurable fuel budget prevents infinite loops. Exhausting the budget terminates execution immediately.
 4. **Watchdog Enforcement:** Any LLM-generated loop that hangs the processor is automatically terminated by the hardware watchdog.
 5. **No Direct Pointers:** Wasm modules must never access hardware memory directly — all access goes through the Alphabet.
 
 ## 6. Efficiency Model
 
-The power of LIAL is quantified by its reduction in Network Round Trips (\(N\)).
+The power of MILO is quantified by its reduction in Network Round Trips (\(N\)).
 
 In standard MCP/tool-use, for every "if/then" hardware decision, data must travel to the LLM and back:
 
@@ -109,21 +109,21 @@ In standard MCP/tool-use, for every "if/then" hardware decision, data must trave
 T_{\text{MCP}} = N \times (t_{\text{network}} + t_{\text{inference}})
 \]
 
-In LIAL, the entire logic is pushed once:
+In MILO, the entire logic is pushed once:
 
 \[
-T_{\text{LIAL}} = t_{\text{compile}} + t_{\text{push}} + t_{\text{local\_exec}}
+T_{\text{MILO}} = t_{\text{compile}} + t_{\text{push}} + t_{\text{local\_exec}}
 \]
 
-For any control loop with \(N > 1\) iterations, LIAL dominates because \(t_{\text{local\_exec}} \ll t_{\text{network}}\).
+For any control loop with \(N > 1\) iterations, MILO dominates because \(t_{\text{local\_exec}} \ll t_{\text{network}}\).
 
 ## 7. Execution Flow
 
 1. **Discovery:** Receiver sends a Hardware Manifest (e.g., "I have an LED on Pin 5, a temperature sensor on I2C 0x48").
 2. **Prompting:** User asks: "Blink the light three times slowly."
-3. **Generation:** Host sends Task + Manifest to the LLM. LLM writes a C/Rust function using the LIAL Alphabet.
+3. **Generation:** Host sends Task + Manifest to the LLM. LLM writes a C/Rust function using the MILO Alphabet.
 4. **Compilation:** Host JIT-compiles that code into a tiny `.wasm` file (~400 bytes).
-5. **Transfer:** Host pushes the bytecode via LIAL-Link.
+5. **Transfer:** Host pushes the bytecode via MILO-Link.
 6. **Execution:** Receiver instantiates the module, links it to the Alphabet, and runs logic locally at silicon speed.
 
 ## 8. Requirements & Dependencies
@@ -142,10 +142,10 @@ For any control loop with \(N > 1\) iterations, LIAL dominates because \(t_{\tex
 
 ## 9. Hardware Abstraction Strategy
 
-The Receiver uses a **`LialHardware` trait** to abstract all syscalls away from the runtime:
+The Receiver uses a **`MiloHardware` trait** to abstract all syscalls away from the runtime:
 
 ```rust
-pub trait LialHardware {
+pub trait MiloHardware {
     fn gpio_set(&mut self, pin: u32, state: u32);
     fn gpio_get(&mut self, pin: u32) -> u32;
     fn delay_ms(&mut self, ms: u32);
@@ -155,11 +155,11 @@ pub trait LialHardware {
 }
 ```
 
-`LialRuntime<H: LialHardware>` is generic over the hardware backend. The runtime, wasm execution, linker, gas metering, and protocol code are fully board-agnostic.
+`MiloRuntime<H: MiloHardware>` is generic over the hardware backend. The runtime, wasm execution, linker, gas metering, and protocol code are fully board-agnostic.
 
 **Phase 1 (Week 1):** Per-board implementations -- `LaptopMock` for development/testing, `Esp32C3Hal` for real hardware via `esp-hal`.
 
-**Phase 2 (Week 2):** A single generic `EmbeddedHalAdapter<P, D, I>` that accepts any board's `embedded-hal`-compatible peripherals (`OutputPin`, `InputPin`, `DelayNs`, `I2c`). Adding a new board requires zero LIAL code changes -- just instantiate the adapter with the board's HAL.
+**Phase 2 (Week 2):** A single generic `EmbeddedHalAdapter<P, D, I>` that accepts any board's `embedded-hal`-compatible peripherals (`OutputPin`, `InputPin`, `DelayNs`, `I2c`). Adding a new board requires zero MILO code changes -- just instantiate the adapter with the board's HAL.
 
 ## 10. Current State (as of v0.1.0-beta)
 
@@ -167,7 +167,7 @@ pub trait LialHardware {
 - **Hardware LEDC PWM** (10-bit, 5 kHz) on GPIO 5 with GPIO fallback.
 - **ADC** (12-bit) on GPIO 2 for potentiometer reading.
 - **I2C** master on GPIO 8/9 driving SSD1306 OLED with bitmap font rendering.
-- **`lial init`** auto-detects boards by VID/PID, downloads firmware from
+- **`milo init`** auto-detects boards by VID/PID, downloads firmware from
   GitHub releases (with `gh api` fallback for private repos), flashes via
   `espflash` (preferred) or `esptool`.
 - **`v0.1.0-beta`** GitHub release with merged ESP32-C3 firmware binary.
