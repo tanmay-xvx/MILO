@@ -3,12 +3,12 @@
 
 Expected layout:
     <artifacts_dir>/
-        lial-receiver-esp32c3/
-            lial-receiver-esp32c3.bin
-            lial-receiver-esp32c3.bin.sha256
-            lial-receiver-esp32c3.bin.size
-            lial-receiver-esp32c3.bin.meta.json   # { variant, family, filename, size_bytes, sha256 }
-        lial-receiver-rp2040/
+        milo-receiver-esp32c3/
+            milo-receiver-esp32c3.bin
+            milo-receiver-esp32c3.bin.sha256
+            milo-receiver-esp32c3.bin.size
+            milo-receiver-esp32c3.bin.meta.json   # { variant, family, filename, size_bytes, sha256 }
+        milo-receiver-rp2040/
             ...
 
 Output `manifest.json` schema:
@@ -21,7 +21,7 @@ Output `manifest.json` schema:
           "variant": "esp32c3",
           "family":  "esp32",
           "display_name": "Espressif ESP32-C3",
-          "filename": "lial-receiver-esp32c3.bin",
+          "filename": "milo-receiver-esp32c3.bin",
           "url":      "<release asset URL>",
           "size_bytes": 182412,
           "sha256": "...",

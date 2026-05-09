@@ -42,10 +42,10 @@ jobs:
           for asset in "${assets[@]}"; do
             # Group per-variant files into subdirs the generator expects
             case "$asset" in
-              lial-receiver-*)
-                variant=$(echo "$asset" | sed -E 's/^lial-receiver-([^.]+).*/\1/')
-                mkdir -p "lial-receiver-$variant"
-                gh release download "$TAG" --pattern "$asset" --dir "lial-receiver-$variant"
+              milo-receiver-*)
+                variant=$(echo "$asset" | sed -E 's/^milo-receiver-([^.]+).*/\1/')
+                mkdir -p "milo-receiver-$variant"
+                gh release download "$TAG" --pattern "$asset" --dir "milo-receiver-$variant"
                 ;;
             esac
           done

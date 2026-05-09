@@ -1,0 +1,45 @@
+---
+description: MILO project architecture, conventions, and safety constraints
+alwaysApply: true
+---
+
+# MILO Project Context
+
+MILO (Modular Interface for LLM-IoT Operations) is an ultra-lightweight hardware abstraction layer that turns any silicon into a programmable extension of an LLM's reasoning engine via JIT-compiled WebAssembly.
+
+Refer to `.cursor/project.md` for the full manifesto and technical specification.
+
+## The MILO Stack
+
+| Layer | Component | Role |
+|-------|-----------|------|
+| Cognitive | LLM | Reasoning and logic generation |
+| Translation | MILO-Host (Python/LLVM) | Compiles C/Rust to `wasm32-unknown-unknown` |
+| Transport | MILO-Link (CBOR/TCP/UDP/BLE) | Binary frame transport, OpCodes `0x01`-`0x03` |
+| Execution | MILO-Runtime (`wasmi`) | Sandboxed Wasm execution on device |
+| Physical | Hardware Registers | GPIO, I2C, SPI, PWM |
+
+## The Atomic Alphabet (12 syscalls)
+
+`gpio_set`, `gpio_get`, `delay_ms`, `get_uptime_us`, `i2c_transfer`, `log_msg`, `pwm_set`, `adc_read`, `spi_transfer`, `uart_write`, `uart_read`, `get_param`
+
+## Receiver Dual Role
+
+1. **Hardware Reporter:** On boot/discovery, generates a Hardware Manifest (JSON/CBOR) describing available pins, buses, peripherals, and memory limits. Sent to Host via OpCode `0x01`.
+2. **Execution Sandbox:** Receives wasm bytecode, instantiates it, links the Alphabet, runs logic locally.
+
+## Key Conventions
+
+- Receiver: Rust `no_std`, `wasmi` crate (`default-features = false`).
+- Drivers: compile to `wasm32-unknown-unknown` (Rust cdylib) or via WASI-SDK (C).
+- Target footprint: < 100 KB.
+- MILO-Link: length-prefixed binary frames over byte streams.
+
+## Safety (Non-Negotiable)
+
+- **Memory Isolation:** Wasm heap is sandboxed, no host memory access.
+- **No Direct Pointers:** All hardware access goes through the Alphabet.
+- **Peripheral Whitelisting:** Only boot-time configured addresses are accessible.
+- **Gas Metering:** Fuel budget enforced; exhaustion terminates execution.
+- **Watchdog:** Hardware watchdog terminates hung loops.
+- **Platform Agnosticism:** Host only speaks Wasm.
