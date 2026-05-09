@@ -2,6 +2,8 @@
 
 > "Silicon as a Service for Agentic Systems"
 
+Licensed under **Apache-2.0** — see [`LICENSE`](LICENSE).
+
 MILO is an ultra-lightweight hardware abstraction layer that turns microcontrollers -- today **ESP32-C3** and **Raspberry Pi Pico (RP2040)** -- into a programmable extension of an LLM's reasoning engine via JIT-compiled WebAssembly. You describe what you want in natural language, the LLM writes firmware, and the device executes it -- often in seconds.
 
 ## Demo
@@ -302,3 +304,7 @@ The **ESP32-C3** (`riscv32imc`) has no native atomics; `wasmi` historically reli
 - `docs/week3/misc/buildplan.md` — **Phased Week 3 build plan** (5 phases, in git)
 - `docs/week3/WEEK3_IMPLEMENTATION.md` — **Implementation status** vs that plan (Pico, transport, Wi-Fi stub, MCP, validation)
 - `docs/week3/research.md`, `context.md`, `plan.md` — Notes and narrative
+
+## License
+
+MILO is released under the [Apache License 2.0](LICENSE). See that file for the full terms.
