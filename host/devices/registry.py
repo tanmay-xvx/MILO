@@ -5,8 +5,9 @@ Tracks devices by name, their manifests, transport handles, and status.
 Supports parallel Wasm push to multiple devices and LLM device routing.
 """
 
-import asyncio
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -92,15 +93,71 @@ class DeviceRegistry:
         return entry.device.push(wasm_bytes, timeout=timeout)
 
     def push_to_all(self, wasm_bytes: bytes, timeout: float = 120.0) -> dict[str, ExecResult]:
-        """Push bytecode to all registered devices sequentially."""
-        results = {}
+        """Push bytecode to all registered devices in parallel.
+
+        One thread per device: transports are independent connections, and a
+        slow or dead device must not stall the rest of the fleet.
+        """
+        connected = [
+            (name, entry.device)
+            for name, entry in self._devices.items()
+            if entry.device.is_connected
+        ]
+        if not connected:
+            return {}
+
+        def _push(device: MiloDevice) -> ExecResult:
+            try:
+                return device.push(wasm_bytes, timeout=timeout)
+            except Exception as e:
+                return ExecResult(ok=False, logs=[], error=str(e))
+
+        with ThreadPoolExecutor(max_workers=len(connected)) as pool:
+            futures = {name: pool.submit(_push, dev) for name, dev in connected}
+            return {name: fut.result() for name, fut in futures.items()}
+
+    def push_async_to_all(self, wasm_bytes: bytes) -> list[str]:
+        """Fire-and-forget push to every connected device (collect results
+        later with `wait_all_results`). Returns the device names pushed to."""
+        pushed = []
         for name, entry in self._devices.items():
             if entry.device.is_connected:
-                try:
-                    results[name] = entry.device.push(wasm_bytes, timeout=timeout)
-                except Exception as e:
-                    results[name] = ExecResult(ok=False, logs=[], error=str(e))
-        return results
+                entry.device.push_async(wasm_bytes)
+                pushed.append(name)
+        return pushed
+
+    def wait_all_results(self, timeout: float = 120.0) -> dict[str, ExecResult]:
+        """Collect one execution result from every connected device (parallel)."""
+        connected = [
+            (name, entry.device)
+            for name, entry in self._devices.items()
+            if entry.device.is_connected
+        ]
+        if not connected:
+            return {}
+
+        def _wait(device: MiloDevice) -> ExecResult:
+            try:
+                return device.wait_result(timeout=timeout)
+            except Exception as e:
+                return ExecResult(ok=False, logs=[], error=str(e))
+
+        with ThreadPoolExecutor(max_workers=len(connected)) as pool:
+            futures = {name: pool.submit(_wait, dev) for name, dev in connected}
+            return {name: fut.result() for name, fut in futures.items()}
+
+    def broadcast_param(self, slot: int, value: int) -> float:
+        """Set a parameter slot on every connected device.
+
+        Returns the wall-clock seconds the whole broadcast took — running
+        modules pick the value up on their next `get_param` call, so this is
+        the fleet-wide "formation change" latency.
+        """
+        start = time.perf_counter()
+        for entry in self._devices.values():
+            if entry.device.is_connected:
+                entry.device.set_param(slot, value)
+        return time.perf_counter() - start
 
     def stop_all(self) -> dict[str, dict]:
         """Stop execution on all registered devices."""

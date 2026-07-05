@@ -1,0 +1,54 @@
+{
+  "spawn_walls": {
+    "drone-1": 1783259208.565933,
+    "drone-2": 1783259208.567477,
+    "drone-3": 1783259208.568651,
+    "drone-4": 1783259208.570623,
+    "drone-5": 1783259208.572296
+  },
+  "events": [
+    {
+      "wall": 1783259209.5182168,
+      "event": "takeoff",
+      "formation_cm": [
+        140,
+        210,
+        280,
+        350,
+        420
+      ]
+    },
+    {
+      "wall": 1783259219.523904,
+      "event": "retask",
+      "target_cm": 300
+    },
+    {
+      "wall": 1783259228.525016,
+      "event": "fault_injected",
+      "device": "drone-3"
+    },
+    {
+      "wall": 1783259244.40337,
+      "event": "hot_swap",
+      "device": "drone-3"
+    },
+    {
+      "wall": 1783259256.408581,
+      "event": "land"
+    }
+  ],
+  "metrics": {
+    "llm_mode": "llm",
+    "controller_wasm_bytes": 943,
+    "compile_ms": 571,
+    "parallel_push_ms": 0.0,
+    "retask_broadcast_ms": 0.05,
+    "repair_gen_ms": 6875,
+    "repair_wasm_bytes": 975,
+    "hot_swap_send_ms": 0.05,
+    "landing_ok": true,
+    "fault_sag_m": 1.89,
+    "recovery_s_after_swap": 9.5
+  }
+}

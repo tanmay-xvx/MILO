@@ -90,3 +90,124 @@ impl MiloTransport for StdioTransport {
         crate::engine::link::write_frame(&mut self.stdout, frame)
     }
 }
+
+/// TCP server transport (std only) — used by the virtual fleet emulator and
+/// as the reference implementation for the Wi-Fi receiver transport.
+///
+/// Accepts one host connection at a time and survives disconnects: when the
+/// client drops, the next `read_frame` goes back to accepting. Reads are
+/// short-timeout and internally buffered, so `read_frame` returns `Err`
+/// periodically even while idle — the main loop uses those gaps to poll the
+/// executor for results from long-running modules.
+#[cfg(feature = "std")]
+pub struct TcpServerTransport {
+    listener: std::net::TcpListener,
+    client: Option<std::net::TcpStream>,
+    buf: alloc::vec::Vec<u8>,
+}
+
+#[cfg(feature = "std")]
+impl TcpServerTransport {
+    pub fn bind(port: u16) -> std::io::Result<Self> {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", port))?;
+        listener.set_nonblocking(true)?;
+        Ok(Self {
+            listener,
+            client: None,
+            buf: alloc::vec::Vec::new(),
+        })
+    }
+
+    fn ensure_client(&mut self) -> Result<(), LinkError> {
+        if self.client.is_some() {
+            return Ok(());
+        }
+        match self.listener.accept() {
+            Ok((stream, _)) => {
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_millis(50)))
+                    .ok();
+                stream.set_nodelay(true).ok();
+                self.buf.clear();
+                self.client = Some(stream);
+                Ok(())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                Err(LinkError::Io(alloc::string::String::from("no client")))
+            }
+            Err(e) => Err(LinkError::Io(alloc::format!("{e}"))),
+        }
+    }
+
+    /// Try to parse one complete frame out of the internal buffer.
+    fn take_frame(&mut self) -> Option<Frame> {
+        if self.buf.len() < 5 {
+            return None;
+        }
+        let len = u32::from_be_bytes([self.buf[1], self.buf[2], self.buf[3], self.buf[4]]) as usize;
+        if self.buf.len() < 5 + len {
+            return None;
+        }
+        let opcode = self.buf[0];
+        let payload = self.buf[5..5 + len].to_vec();
+        self.buf.drain(..5 + len);
+        Some(Frame::new(opcode, payload))
+    }
+}
+
+#[cfg(feature = "std")]
+impl MiloTransport for TcpServerTransport {
+    fn read_frame(&mut self) -> Result<Frame, LinkError> {
+        use std::io::Read;
+
+        self.ensure_client()?;
+        if let Some(frame) = self.take_frame() {
+            return Ok(frame);
+        }
+
+        let mut chunk = [0u8; 4096];
+        let stream = self.client.as_mut().expect("client checked above");
+        match stream.read(&mut chunk) {
+            Ok(0) => {
+                // Client disconnected; go back to accepting.
+                self.client = None;
+                self.buf.clear();
+                Err(LinkError::ConnectionClosed)
+            }
+            Ok(n) => {
+                self.buf.extend_from_slice(&chunk[..n]);
+                self.take_frame()
+                    .ok_or(LinkError::Io(alloc::string::String::from("partial frame")))
+            }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                Err(LinkError::Io(alloc::string::String::from("idle")))
+            }
+            Err(e) => {
+                self.client = None;
+                self.buf.clear();
+                Err(LinkError::Io(alloc::format!("{e}")))
+            }
+        }
+    }
+
+    fn write_frame(&mut self, frame: &Frame) -> Result<(), LinkError> {
+        use std::io::Write;
+
+        let Some(stream) = self.client.as_mut() else {
+            return Err(LinkError::ConnectionClosed);
+        };
+        let bytes = frame.serialize();
+        match stream.write_all(&bytes).and_then(|_| stream.flush()) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                self.client = None;
+                self.buf.clear();
+                Err(LinkError::Io(alloc::format!("{e}")))
+            }
+        }
+    }
+}

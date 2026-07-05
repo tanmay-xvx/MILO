@@ -1,0 +1,4 @@
+[incident B — diagnosis mode: llm]
+The telemetry indicates that the conveyor belt motor is operating at the commanded duty cycle, but no items were counted by the photo-sensor in the latest cycle, suggesting a physical jam on the conveyor belt. The motor temperature has slightly increased, which could be a result of the motor working against the jam. 
+
+ACTION: halt_and_clear

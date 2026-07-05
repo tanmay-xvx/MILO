@@ -1,0 +1,21 @@
+[t+   0.00s] MILO swarm demo — 5 emulated drones, LLM=live (gpt-4o)
+[t+   0.38s] fleet up: drone-1, drone-2, drone-3, drone-4, drone-5
+[t+   0.38s] discovery manifests: {'drone-1': 'sim-drone', 'drone-2': 'sim-drone', 'drone-3': 'sim-drone', 'drone-4': 'sim-drone', 'drone-5': 'sim-drone'}
+[t+   0.95s] compiled flight controller: 943 bytes in 571 ms
+[t+   0.95s] pushed controller to all 5 drones in 0.0 ms — echelon-formation takeoff
+[t+  10.96s] fleet status while flying: {'drone-1': 'running', 'drone-2': 'running', 'drone-3': 'running', 'drone-4': 'running', 'drone-5': 'running'}
+[t+  10.96s] RETASK: formation → line at 300 cm; broadcast to 5 drones took 0.05 ms (no recompile, no reflash)
+[t+  19.96s] FAULT: drone-3 motor 2 degraded to 40% thrust — watch it droop
+[t+  28.96s] asking GPT-4o to write a PI repair controller for the degraded drone …
+[t+  35.84s] repair controller ready (llm): 975 bytes in 6875 ms
+[t+  35.84s] HOT-SWAP: new controller onto drone-3 in flight (0.05 ms send) — no landing, no reflash
+[t+  47.84s] LAND: cooperative-stop broadcast to the whole formation
+[t+  47.87s]   drone-1: ok=True logs=['flight: P-hold engaged', 'flight: episode complete, motors safed']
+[t+  47.87s]   drone-2: ok=True logs=['flight: P-hold engaged', 'flight: episode complete, motors safed']
+[t+  47.87s]   drone-3: ok=True logs=['flight: P-hold engaged', 'flight: episode complete, motors safed']
+[t+  47.87s]   drone-4: ok=True logs=['flight: P-hold engaged', 'flight: episode complete, motors safed']
+[t+  47.87s]   drone-5: ok=True logs=['flight: P-hold engaged', 'flight: episode complete, motors safed']
+[t+  47.87s]   drone-3 (repair episode): ok=True logs=['Altitude controller engaged', 'Altitude control completed']
+[t+  47.88s] analysis: drone-3 sagged 1.89 m under fault; recovered to ±15 cm of target 9.5 s after hot-swap
+[t+  47.88s] metrics: {"llm_mode": "llm", "controller_wasm_bytes": 943, "compile_ms": 571, "parallel_push_ms": 0.0, "retask_broadcast_ms": 0.05, "repair_gen_ms": 6875, "repair_wasm_bytes": 975, "hot_swap_send_ms": 0.05, "landing_ok": true, "fault_sag_m": 1.89, "recovery_s_after_swap": 9.5}
+[t+  47.88s] evidence written to demos/evidence/ (telemetry, events, transcript, LLM driver)

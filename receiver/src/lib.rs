@@ -89,14 +89,36 @@ pub fn main_loop<T: transport::MiloTransport, H: MiloHardware + 'static>(
     hal: H,
     manifest_json: &str,
 ) -> ! {
-    use engine::executor::{ExecStatus, MiloExecutor, SingleCoreExecutor};
+    let exec = engine::executor::SingleCoreExecutor::new(hal, Some(500_000_000));
+    main_loop_with_executor(transport, exec, manifest_json)
+}
 
-    let mut exec = SingleCoreExecutor::new(hal, Some(500_000_000));
+/// Main loop over any executor strategy. With a blocking executor
+/// (`SingleCoreExecutor`) results are sent from the push handler as before;
+/// with a non-blocking one (`ThreadedExecutor`, `DualCoreExecutor`) the loop
+/// keeps servicing control opcodes while the module runs and sends the
+/// EXEC_RESULT once `poll_result` yields it.
+pub fn main_loop_with_executor<T: transport::MiloTransport, E: engine::executor::MiloExecutor>(
+    transport: &mut T,
+    mut exec: E,
+    manifest_json: &str,
+) -> ! {
+    use engine::executor::ExecStatus;
 
     loop {
         let frame = match transport.read_frame() {
             Ok(f) => f,
-            Err(_) => continue,
+            Err(_) => {
+                // Idle gap: flush any result from a module that finished
+                // while we were servicing other traffic.
+                if let Some(result) = exec.poll_result() {
+                    let json = exec_result_to_json(&result);
+                    let resp =
+                        engine::link::Frame::new(engine::link::OP_EXEC_RESULT, json.into_bytes());
+                    let _ = transport.write_frame(&resp);
+                }
+                continue;
+            }
         };
 
         match frame.opcode {

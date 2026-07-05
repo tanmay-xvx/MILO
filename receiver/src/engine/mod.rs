@@ -5,3 +5,6 @@ pub mod validation;
 
 #[cfg(feature = "rp2040")]
 pub mod executor_dual;
+
+#[cfg(feature = "std")]
+pub mod executor_threaded;

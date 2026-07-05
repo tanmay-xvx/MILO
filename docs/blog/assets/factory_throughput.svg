@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 340" role="img">
+  <style>
+    .bg { fill: #fcfcfb; }
+    .txt { fill: #0b0b0b; font: 600 15px -apple-system, 'Segoe UI', sans-serif; }
+    .txt2 { fill: #52514e; font: 12px -apple-system, 'Segoe UI', sans-serif; }
+    .txtm { fill: #7a7a74; font: 11px -apple-system, 'Segoe UI', sans-serif; }
+    .tick { fill: #52514e; font: 11px -apple-system, 'Segoe UI', sans-serif;
+            font-variant-numeric: tabular-nums; }
+    .grid { stroke: #ececea; stroke-width: 1; }
+    .evt { stroke: #9b9a94; stroke-width: 1; stroke-dasharray: 3 3; }
+    .serious { stroke: #c62f2e; }
+    .serious-txt { fill: #c62f2e; font: 600 11px -apple-system, sans-serif; }
+    .ring { stroke: #fcfcfb; stroke-width: 2; }
+    .s0 { stroke: #2a78d6; } .sf0 { fill: #2a78d6; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #1a1a19; }
+      .txt { fill: #ffffff; }
+      .txt2 { fill: #c3c2b7; }
+      .txtm { fill: #93928c; }
+      .tick { fill: #c3c2b7; }
+      .grid { stroke: #2c2c2a; }
+      .evt { stroke: #6b6a64; }
+      .serious { stroke: #e66767; }
+      .serious-txt { fill: #e66767; }
+      .ring { stroke: #1a1a19; }
+      .s0 { stroke: #3987e5; } .sf0 { fill: #3987e5; }
+    }
+  </style>
+<rect class="bg" x="0" y="0" width="880" height="340" rx="8"/><text class="txt" x="56" y="30">Conveyor throughput — jam detected, cleared by the arm, restored</text><text class="txt2" x="56" y="50">Items past the photo-sensor per 3-second episode; the zero at cycle 10 is the jam the station caught autonomously</text><line class="grid" x1="56" y1="294.0" x2="856" y2="294.0"/><text class="tick" x="48" y="298.0" text-anchor="end">0</text><line class="grid" x1="56" y1="250.8" x2="856" y2="250.8"/><text class="tick" x="48" y="254.8" text-anchor="end">1</text><line class="grid" x1="56" y1="207.6" x2="856" y2="207.6"/><text class="tick" x="48" y="211.6" text-anchor="end">2</text><line class="grid" x1="56" y1="164.4" x2="856" y2="164.4"/><text class="tick" x="48" y="168.4" text-anchor="end">3</text><line class="grid" x1="56" y1="121.2" x2="856" y2="121.2"/><text class="tick" x="48" y="125.2" text-anchor="end">4</text><line class="grid" x1="56" y1="78.0" x2="856" y2="78.0"/><text class="tick" x="48" y="82.0" text-anchor="end">5</text><text class="txt2" transform="rotate(-90 16 186)" x="16" y="186" text-anchor="middle">items / episode</text><path class="sf0" d="M77.3,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="89.3" y="312" text-anchor="middle">1</text><path class="sf0" d="M144.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="156.0" y="312" text-anchor="middle">2</text><path class="sf0" d="M210.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="222.7" y="312" text-anchor="middle">3</text><path class="sf0" d="M277.3,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="289.3" y="312" text-anchor="middle">4</text><path class="sf0" d="M344.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="356.0" y="312" text-anchor="middle">5</text><path class="sf0" d="M410.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="422.7" y="312" text-anchor="middle">6</text><path class="sf0" d="M477.3,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="489.3" y="312" text-anchor="middle">7</text><path class="sf0" d="M544.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="556.0" y="312" text-anchor="middle">8</text><path class="sf0" d="M610.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="622.7" y="312" text-anchor="middle">9</text><text class="tick" x="689.3" y="312" text-anchor="middle">10</text><text class="serious-txt" x="689.3" y="286.0" text-anchor="middle">✕ jam</text><path class="sf0" d="M744.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="756.0" y="312" text-anchor="middle">11</text><path class="sf0" d="M810.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="822.7" y="312" text-anchor="middle">12</text><text class="txt2" x="456.0" y="332" text-anchor="middle">cycle</text></svg>

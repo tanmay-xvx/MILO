@@ -1,0 +1,337 @@
+{
+  "spawn_walls": {
+    "conveyor-1": 1783258223.784318,
+    "oven-1": 1783258223.7856672,
+    "arm-1": 1783258223.786918
+  },
+  "cycles": [
+    {
+      "cycle": 1,
+      "items": 4,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 359,
+      "oven_temps_tenths": [
+        250,
+        292,
+        332,
+        372,
+        410,
+        448,
+        484,
+        518,
+        551,
+        584,
+        615,
+        645,
+        675,
+        703,
+        730
+      ],
+      "oven_mode": "open-loop (vendor firmware)"
+    },
+    {
+      "cycle": 2,
+      "items": 4,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 432,
+      "oven_temps_tenths": [
+        776,
+        801,
+        824,
+        847,
+        870,
+        891,
+        912,
+        931,
+        951,
+        970,
+        988,
+        1005,
+        1022,
+        1038,
+        1054
+      ],
+      "oven_mode": "open-loop (vendor firmware)"
+    },
+    {
+      "cycle": 3,
+      "items": 4,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 481,
+      "oven_temps_tenths": [
+        1080,
+        1094,
+        1108,
+        1121,
+        1134,
+        1146,
+        1158,
+        1170,
+        1181,
+        1192,
+        1203,
+        1213,
+        1223,
+        1232,
+        1241
+      ],
+      "oven_mode": "open-loop (vendor firmware)"
+    },
+    {
+      "cycle": 4,
+      "items": 4,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 514,
+      "oven_temps_tenths": [
+        1258,
+        1266,
+        1274,
+        1282,
+        1289,
+        1296,
+        1303,
+        1310,
+        1317,
+        1323,
+        1329,
+        1335,
+        1340,
+        1346,
+        1351
+      ],
+      "oven_mode": "open-loop (vendor firmware)"
+    },
+    {
+      "cycle": 5,
+      "items": 4,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 536,
+      "oven_temps_tenths": [
+        1371,
+        1391,
+        1409,
+        1427,
+        1445,
+        1462,
+        1478,
+        1494,
+        1509,
+        1523,
+        1538,
+        1551,
+        1564,
+        1577,
+        1589
+      ],
+      "oven_mode": "open-loop (vendor firmware)"
+    },
+    {
+      "cycle": 6,
+      "items": 4,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 550,
+      "oven_temps_tenths": [
+        1610,
+        1621,
+        1632,
+        1642,
+        1652,
+        1662,
+        1672,
+        1681,
+        1689,
+        1698,
+        1706,
+        1714,
+        1722,
+        1729,
+        1736
+      ],
+      "oven_mode": "open-loop (vendor firmware)"
+    },
+    {
+      "cycle": 7,
+      "items": 4,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 561,
+      "oven_temps_tenths": [
+        1759,
+        1748,
+        1737,
+        1725,
+        1713,
+        1700,
+        1688,
+        1675,
+        1661,
+        1648,
+        1635,
+        1621,
+        1608,
+        1595,
+        1582
+      ],
+      "oven_mode": "closed-loop (llm-written)"
+    },
+    {
+      "cycle": 8,
+      "items": 4,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 567,
+      "oven_temps_tenths": [
+        1559,
+        1555,
+        1552,
+        1548,
+        1545,
+        1541,
+        1538,
+        1534,
+        1530,
+        1527,
+        1523,
+        1520,
+        1516,
+        1513,
+        1510
+      ],
+      "oven_mode": "closed-loop (llm-written)"
+    },
+    {
+      "cycle": 9,
+      "items": 4,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 571,
+      "oven_temps_tenths": [
+        1504,
+        1502,
+        1501,
+        1500,
+        1498,
+        1497,
+        1496,
+        1495,
+        1494,
+        1493,
+        1492,
+        1491,
+        1490,
+        1490,
+        1489
+      ],
+      "oven_mode": "closed-loop (llm-written)"
+    },
+    {
+      "cycle": 10,
+      "items": 0,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 574,
+      "oven_temps_tenths": [
+        1488,
+        1487,
+        1486,
+        1486,
+        1485,
+        1485,
+        1484,
+        1484,
+        1484,
+        1483,
+        1483,
+        1483,
+        1483,
+        1483,
+        1483
+      ],
+      "oven_mode": "closed-loop (llm-written)"
+    },
+    {
+      "cycle": 11,
+      "items": 4,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 563,
+      "oven_temps_tenths": [
+        1483,
+        1483,
+        1482,
+        1482,
+        1482,
+        1481,
+        1481,
+        1481,
+        1481,
+        1481,
+        1481,
+        1481,
+        1481,
+        1481,
+        1481
+      ],
+      "oven_mode": "closed-loop (llm-written)"
+    },
+    {
+      "cycle": 12,
+      "items": 4,
+      "belt_duty": 6000,
+      "motor_temp_tenths": 568,
+      "oven_temps_tenths": [
+        1482,
+        1481,
+        1481,
+        1480,
+        1480,
+        1480,
+        1480,
+        1480,
+        1480,
+        1480,
+        1480,
+        1480,
+        1480,
+        1481,
+        1481
+      ],
+      "oven_mode": "closed-loop (llm-written)"
+    }
+  ],
+  "incidents": [
+    {
+      "cycle": 5,
+      "incident": "heater_drift_injected"
+    },
+    {
+      "cycle": 6,
+      "incident": "oven_firmware_replaced",
+      "gen_mode": "llm",
+      "gen_ms": 4691,
+      "wasm_bytes": 835,
+      "diag_mode": "llm"
+    },
+    {
+      "cycle": 10,
+      "incident": "jam_injected"
+    },
+    {
+      "cycle": 10,
+      "incident": "jam_cleared",
+      "recovery_s": 4.1,
+      "arm_logs": [
+        "arm: clear sweep start",
+        "REACHED_END=1",
+        "HOME=1",
+        "arm: clear sweep complete"
+      ],
+      "diag_mode": "llm"
+    }
+  ],
+  "metrics": {
+    "oven_fix_gen_ms": 4691,
+    "oven_fix_mode": "llm",
+    "jam_recovery_s": 4.1,
+    "total_items": 44,
+    "throughput_healthy_avg": 4.0,
+    "throughput_after_jam_avg": 4.0,
+    "oven_final_c": 148.1,
+    "oven_peak_c": 175.9
+  }
+}

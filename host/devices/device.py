@@ -52,10 +52,42 @@ class MiloDevice:
         self._transport = transport
         self.name = name
         self.manifest: dict | None = None
+        # EXEC_RESULT frames that arrived while waiting for something else
+        # (a long-running module can finish at any time).
+        self._pending_results: list[bytes] = []
 
     @property
     def is_connected(self) -> bool:
         return self._transport.is_connected
+
+    def _read_routed(self, want_opcode: int, timeout: float) -> bytes:
+        """Read frames until `want_opcode` arrives, stashing stray EXEC_RESULTs.
+
+        With a non-blocking executor on the device, an EXEC_RESULT from a
+        previously pushed module can interleave with the response to a later
+        control request; route it to the pending queue instead of failing.
+        """
+        import time as _time
+
+        deadline = _time.time() + timeout
+        while True:
+            remaining = deadline - _time.time()
+            if remaining <= 0:
+                raise TimeoutError(f"no 0x{want_opcode:02x} frame within {timeout}s")
+            opcode, payload = self._transport.read_frame(timeout=remaining)
+            if opcode == want_opcode:
+                return payload
+            if opcode == OP_EXEC_RESULT:
+                self._pending_results.append(payload)
+
+    @staticmethod
+    def _parse_result(payload: bytes) -> ExecResult:
+        data = json.loads(payload)
+        return ExecResult(
+            ok=data.get("ok", False),
+            logs=data.get("logs", []),
+            error=data.get("error"),
+        )
 
     def discover(self, timeout: float = 5.0) -> dict | None:
         """Request device manifest."""
@@ -65,35 +97,37 @@ class MiloDevice:
     def push(self, wasm_bytes: bytes, timeout: float = 120.0) -> ExecResult:
         """Push Wasm bytecode and wait for execution result."""
         self._transport.write_frame(OP_BYTECODE_PUSH, wasm_bytes)
-        opcode, payload = self._transport.read_frame(timeout=timeout)
-        if opcode == OP_EXEC_RESULT:
-            data = json.loads(payload)
-            return ExecResult(
-                ok=data.get("ok", False),
-                logs=data.get("logs", []),
-                error=data.get("error"),
-            )
-        raise RuntimeError(f"unexpected opcode 0x{opcode:02x}")
+        return self.wait_result(timeout=timeout)
+
+    def push_async(self, wasm_bytes: bytes) -> None:
+        """Push bytecode without waiting — collect via wait_result() later.
+
+        Requires a receiver with a non-blocking executor (sim fleet, dual-core)
+        for live control; on blocking receivers the result simply queues up.
+        """
+        self._transport.write_frame(OP_BYTECODE_PUSH, wasm_bytes)
+
+    def wait_result(self, timeout: float = 120.0) -> ExecResult:
+        """Wait for the next execution result (pending queue first)."""
+        if self._pending_results:
+            return self._parse_result(self._pending_results.pop(0))
+        return self._parse_result(self._read_routed(OP_EXEC_RESULT, timeout))
 
     def stop(self) -> dict:
         """Stop the currently running Wasm module."""
         self._transport.write_frame(OP_STOP)
-        opcode, payload = self._transport.read_frame(timeout=5.0)
-        if opcode == OP_STATUS_RESPONSE:
-            return json.loads(payload)
-        return {"stopped": True}
+        payload = self._read_routed(OP_STATUS_RESPONSE, timeout=5.0)
+        return json.loads(payload)
 
     def query_status(self, timeout: float = 5.0) -> DeviceStatus:
         """Query device execution status."""
         self._transport.write_frame(OP_QUERY_STATUS)
-        opcode, payload = self._transport.read_frame(timeout=timeout)
-        if opcode == OP_STATUS_RESPONSE:
-            data = json.loads(payload)
-            return DeviceStatus(
-                status=data.get("status", "unknown"),
-                running=data.get("running", False),
-            )
-        raise RuntimeError(f"unexpected opcode 0x{opcode:02x}")
+        payload = self._read_routed(OP_STATUS_RESPONSE, timeout=timeout)
+        data = json.loads(payload)
+        return DeviceStatus(
+            status=data.get("status", "unknown"),
+            running=data.get("running", False),
+        )
 
     def set_param(self, slot: int, value: int) -> None:
         """Set a shared parameter slot on the device.
@@ -106,15 +140,11 @@ class MiloDevice:
     def hot_swap(self, wasm_bytes: bytes, timeout: float = 120.0) -> ExecResult:
         """Stop current execution and immediately start new bytecode."""
         self._transport.write_frame(OP_HOT_SWAP, wasm_bytes)
-        opcode, payload = self._transport.read_frame(timeout=timeout)
-        if opcode == OP_EXEC_RESULT:
-            data = json.loads(payload)
-            return ExecResult(
-                ok=data.get("ok", False),
-                logs=data.get("logs", []),
-                error=data.get("error"),
-            )
-        raise RuntimeError(f"unexpected opcode 0x{opcode:02x}")
+        return self.wait_result(timeout=timeout)
+
+    def hot_swap_async(self, wasm_bytes: bytes) -> None:
+        """Hot-swap without waiting — collect via wait_result() later."""
+        self._transport.write_frame(OP_HOT_SWAP, wasm_bytes)
 
     def close(self) -> None:
         """Close the underlying transport."""

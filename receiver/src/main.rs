@@ -487,6 +487,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut fuel: Option<u64> = Some(10_000_000);
     let mut wasm_path: Option<String> = None;
     let mut stdin_mode = false;
+    let mut listen_port: Option<u16> = None;
+    let mut profile_name: Option<String> = None;
+    let mut device_name: Option<String> = None;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -497,11 +500,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--stdin" => {
                 stdin_mode = true;
             }
+            "--listen" => {
+                i += 1;
+                listen_port = Some(args[i].parse().expect("--listen requires a port"));
+            }
+            "--profile" => {
+                i += 1;
+                profile_name = Some(args[i].clone());
+            }
+            "--name" => {
+                i += 1;
+                device_name = Some(args[i].clone());
+            }
             other => {
                 wasm_path = Some(other.to_string());
             }
         }
         i += 1;
+    }
+
+    // ── Virtual fleet emulator: TCP server with a simulated hardware profile.
+    // Uses the shared main_loop (import validation + all extended opcodes)
+    // and the ThreadedExecutor, so the device keeps answering stop/set-param/
+    // query/hot-swap while a driver is running — same contract a dual-core
+    // board provides.
+    if let Some(port) = listen_port {
+        use milo_receiver::engine::executor_threaded::ThreadedExecutor;
+        use milo_receiver::targets::sim::{
+            sim_manifest, sim_start_hook, sim_stop_hook, SimHal, SimProfile,
+        };
+        use milo_receiver::transport::TcpServerTransport;
+
+        let profile_str = profile_name.as_deref().unwrap_or("drone");
+        let profile = SimProfile::parse(profile_str)
+            .unwrap_or_else(|| panic!("unknown profile '{profile_str}' (drone|conveyor|oven|arm)"));
+        let name = device_name.unwrap_or_else(|| format!("{profile_str}-{port}"));
+
+        let hal = SimHal::new(profile, &name);
+        let manifest = sim_manifest(profile, &name);
+        let exec = ThreadedExecutor::new(
+            hal,
+            Some(500_000_000),
+            Some(sim_stop_hook),
+            Some(sim_start_hook),
+        );
+        let mut transport = TcpServerTransport::bind(port)?;
+        eprintln!("[{name}] sim receiver ({profile_str}) listening on 127.0.0.1:{port}");
+        milo_receiver::main_loop_with_executor(&mut transport, exec, &manifest);
     }
 
     if stdin_mode {
