@@ -25,6 +25,7 @@ unsafe extern "C" {{
     fn spi_transfer(bus: u32, tx_ptr: u32, tx_len: u32, rx_ptr: u32, rx_len: u32) -> i32;
     fn uart_write(bus: u32, ptr: u32, len: u32) -> i32;
     fn uart_read(bus: u32, ptr: u32, len_max: u32, timeout_ms: u32) -> i32;
+    fn get_param(slot: u32) -> u32;
 }}
 
 {body}

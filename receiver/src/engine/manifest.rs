@@ -203,6 +203,7 @@ pub const ALPHABET: &[&str] = &[
     "spi_transfer",
     "uart_write",
     "uart_read",
+    "get_param",
 ];
 
 fn json_string(s: &mut String, key: &str, value: &str) {
@@ -326,8 +327,10 @@ mod tests {
         assert_eq!(v["wasm_limits"]["fuel_default"], 1_000_000);
 
         let alphabet = v["alphabet"].as_array().unwrap();
+        assert_eq!(alphabet.len(), 12);
         assert!(alphabet.iter().any(|x| x == "pwm_set"));
         assert!(alphabet.iter().any(|x| x == "uart_read"));
+        assert!(alphabet.iter().any(|x| x == "get_param"));
     }
 
     #[test]

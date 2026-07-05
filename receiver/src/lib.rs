@@ -109,10 +109,7 @@ pub fn main_loop<T: transport::MiloTransport, H: MiloHardware + 'static>(
             engine::link::OP_BYTECODE_PUSH => {
                 let v = engine::validation::validate_wasm_imports(&frame.payload);
                 if !v.valid {
-                    let err_msg = format!(
-                        r#"{{"ok":false,"error":"rejected imports: {:?}"}}"#,
-                        v.rejected_imports
-                    );
+                    let err_msg = rejected_imports_json(&v.rejected_imports);
                     let resp = engine::link::Frame::new(engine::link::OP_EXEC_RESULT, err_msg.into_bytes());
                     let _ = transport.write_frame(&resp);
                 } else {
@@ -171,10 +168,7 @@ pub fn main_loop<T: transport::MiloTransport, H: MiloHardware + 'static>(
             engine::link::OP_HOT_SWAP => {
                 let v = engine::validation::validate_wasm_imports(&frame.payload);
                 if !v.valid {
-                    let err_msg = format!(
-                        r#"{{"ok":false,"error":"rejected imports: {:?}"}}"#,
-                        v.rejected_imports
-                    );
+                    let err_msg = rejected_imports_json(&v.rejected_imports);
                     let resp = engine::link::Frame::new(engine::link::OP_EXEC_RESULT, err_msg.into_bytes());
                     let _ = transport.write_frame(&resp);
                 } else {
@@ -200,7 +194,38 @@ pub fn main_loop<T: transport::MiloTransport, H: MiloHardware + 'static>(
     }
 }
 
-fn exec_result_to_json(result: &engine::executor::ExecResult) -> String {
+/// Escape a string for embedding inside a JSON string literal.
+pub fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+fn rejected_imports_json(rejected: &[String]) -> String {
+    let mut names = String::new();
+    for (i, name) in rejected.iter().enumerate() {
+        if i > 0 {
+            names.push_str(", ");
+        }
+        names.push_str(name);
+    }
+    format!(
+        r#"{{"ok":false,"error":"rejected imports: {}"}}"#,
+        json_escape(&names)
+    )
+}
+
+pub fn exec_result_to_json(result: &engine::executor::ExecResult) -> String {
     if result.ok {
         let mut s = String::from(r#"{"ok":true,"logs":["#);
         for (i, log) in result.logs.iter().enumerate() {
@@ -208,7 +233,7 @@ fn exec_result_to_json(result: &engine::executor::ExecResult) -> String {
                 s.push(',');
             }
             s.push('"');
-            s.push_str(log);
+            s.push_str(&json_escape(log));
             s.push('"');
         }
         s.push_str("]}");
@@ -216,7 +241,7 @@ fn exec_result_to_json(result: &engine::executor::ExecResult) -> String {
     } else {
         format!(
             r#"{{"ok":false,"error":"{}"}}"#,
-            result.error.as_deref().unwrap_or("unknown")
+            json_escape(result.error.as_deref().unwrap_or("unknown"))
         )
     }
 }

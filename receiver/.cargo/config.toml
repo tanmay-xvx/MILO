@@ -1,6 +1,8 @@
+# Note: do not add `--cfg portable_atomic_unsafe_assume_single_core` here —
+# Cargo.toml enables portable-atomic's `critical-section` feature (impl
+# provided by esp-hal), and portable-atomic refuses both at once.
 [target.riscv32imc-unknown-none-elf]
 rustflags = [
-    "--cfg", "portable_atomic_unsafe_assume_single_core",
     "-C", "link-arg=-Tlinkall.x",
 ]
 

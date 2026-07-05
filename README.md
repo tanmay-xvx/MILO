@@ -157,7 +157,7 @@ cd receiver
 cargo build
 cargo run -- ../examples/test_drivers/blink_led/target/wasm32-unknown-unknown/release/blink_led.wasm
 
-# Or with gas metering
+# Gas metering defaults to 10M fuel; override with --fuel
 cargo run -- --fuel 100000 <path-to-wasm>
 
 # Host in subprocess mode
@@ -165,9 +165,18 @@ cd ../host
 python3 cli.py --subprocess "../receiver/target/debug/milo-receiver --stdin"
 ```
 
+The example driver `.wasm` files are build artifacts (not in git) — build them first:
+
+```bash
+for d in examples/mock_driver examples/test_drivers/*/; do
+  (cd "$d" && cargo build --release --target wasm32-unknown-unknown)
+done
+```
+
 ### Run tests
 
 ```bash
+# Integration tests load the example driver wasm built above
 cd receiver
 cargo test
 
@@ -299,6 +308,8 @@ The **ESP32-C3** (`riscv32imc`) has no native atomics; `wasmi` historically reli
 
 ## Development tracking
 
+- `docs/milo-guide.html` — Standalone project guide (architecture, syscalls, protocol)
+- `docs/review/2026-07-audit.md` — Full-project audit: findings, fixes, verification
 - `docs/week1/` — Core runtime, ESP32-C3, serial protocol
 - `docs/week2/` — Board-agnostic adapter, firmware delivery, E2E testing
 - `docs/week3/misc/buildplan.md` — **Phased Week 3 build plan** (5 phases, in git)
