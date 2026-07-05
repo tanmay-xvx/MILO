@@ -227,7 +227,8 @@ MILO/
 │   │       ├── esp32c3/       # Esp32C3Hal (impl MiloHardware)
 │   │       ├── rp2040/        # Rp2040Hal (impl MiloHardware)
 │   │       └── mock/          # LaptopMock (std testing)
-│   ├── memory.x               # Pico RAM layout (thumbv6)
+│   ├── ld/rp2040/memory.x     # Pico RAM layout (thumbv6; kept out of crate root)
+│   ├── build.rs               # Adds ld/rp2040 to link search for rp2040 builds
 │   ├── tests/                 # Integration tests
 │   └── .cargo/config.toml     # riscv + thumbv6 (build-std for Pico)
 │
