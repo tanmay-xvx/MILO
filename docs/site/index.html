@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MILO — natural language becomes running firmware</title>
+<title>MILO &#8212; natural language becomes running firmware</title>
 <style>
-  /* ── Instrument palette. Dark = oscilloscope; light = printed datasheet. ── */
+  /* &#9472;&#9472; Instrument palette. Dark = oscilloscope; light = printed datasheet. &#9472;&#9472; */
   :root {
     --bg: #f4f2ec;
     --panel: #fbfaf6;
@@ -103,7 +103,7 @@
   a:hover { text-decoration:underline; }
   :focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 
-  /* ── top status bar ── */
+  /* &#9472;&#9472; top status bar &#9472;&#9472; */
   .statusbar {
     position:sticky; top:0; z-index:40;
     background:color-mix(in srgb, var(--bg) 88%, transparent);
@@ -121,7 +121,7 @@
   .statusbar nav a:hover { color:var(--accent); text-decoration:none; }
   @media (max-width:720px){ .statusbar nav{display:none;} }
 
-  /* ── hero ── */
+  /* &#9472;&#9472; hero &#9472;&#9472; */
   header { position:relative; padding:70px 0 44px; overflow:hidden; }
   #scope { position:absolute; inset:0; width:100%; height:100%; opacity:.5; z-index:0; pointer-events:none; }
   .hero { position:relative; z-index:1; display:grid; grid-template-columns:1.05fr .95fr; gap:46px; align-items:center; }
@@ -158,7 +158,7 @@
     vertical-align:-2px; animation:blink 1.05s steps(1) infinite; }
   @keyframes blink { 50%{opacity:0} }
 
-  /* ── readout strip ── */
+  /* &#9472;&#9472; readout strip &#9472;&#9472; */
   .readout { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
     border:1px solid var(--line); border-radius:8px; background:var(--panel); margin-top:8px; overflow:hidden; }
   .cell { padding:18px 16px; border-left:1px solid var(--line); }
@@ -168,7 +168,7 @@
   .cell .v small{ font-size:.9rem; color:var(--accent); }
   .cell .k { font-family:var(--mono); font-size:10.5px; letter-spacing:.11em; text-transform:uppercase; color:var(--faint); margin-top:5px; }
 
-  /* ── section frame ── */
+  /* &#9472;&#9472; section frame &#9472;&#9472; */
   section { padding:74px 0 6px; position:relative; }
   .sec-head { display:flex; align-items:baseline; gap:16px; margin-bottom:8px; flex-wrap:wrap; }
   .op { font-family:var(--mono); font-size:12px; font-weight:700; color:var(--accent);
@@ -274,12 +274,12 @@
 
 <div class="statusbar"><div class="wrap"><div class="row">
   <span class="dot"></span><span class="brand">MILO</span>
-  <span class="mono" style="color:var(--faint)">LLM·IoT OPERATIONS</span>
+  <span class="mono" style="color:var(--faint)">LLM&#183;IoT OPERATIONS</span>
   <nav>
     <a href="#pipeline">PIPELINE</a><a href="#swarm">SWARM</a>
     <a href="#factory">FACTORY</a><a href="#mcp">MCP</a>
     <a href="#trust">TRUST</a><a href="#boards">BOARDS</a>
-    <a href="https://github.com/tanmay-xvx/MILO">GITHUB ↗</a>
+    <a href="https://github.com/tanmay-xvx/MILO">GITHUB &#8599;</a>
   </nav>
 </div></div></div>
 
@@ -288,11 +288,11 @@
   <div class="wrap">
     <div class="hero">
       <div>
-        <span class="tag">MILO-Link · rev 0.9 · 12-syscall ABI</span>
+        <span class="tag">MILO-Link &#183; rev 0.9 &#183; 12-syscall ABI</span>
         <h1><span class="fade">You describe it.</span><br>The model writes the firmware.<br><span class="hl">The silicon just runs it.</span></h1>
         <p class="lede">MILO turns a microcontroller into an extension of an AI's reasoning.
           Describe a task in English; <b>GPT-4o writes Rust, it compiles to a ~1&nbsp;KB
-          sandboxed WebAssembly module, and it streams to the device in seconds</b> — over
+          sandboxed WebAssembly module, and it streams to the device in seconds</b> &#8212; over
           USB to a $4 board or TCP to a whole emulated fleet. Firmware stops being a
           release and becomes a live conversation.</p>
         <div class="cta">
@@ -301,7 +301,7 @@
         </div>
       </div>
       <div class="term" aria-label="Live handshake transcript">
-        <div class="head"><i></i><i></i><i></i><span>milo@fleet — swarm_demo.py</span></div>
+        <div class="head"><i></i><i></i><i></i><span>milo@fleet &#8212; swarm_demo.py</span></div>
         <div class="body" id="tterm"></div>
       </div>
     </div>
@@ -320,54 +320,54 @@
 
   <!-- 0x01 PIPELINE -->
   <section id="pipeline">
-    <div class="sec-head"><span class="op">0x02</span><span class="sec-kicker">Pipeline · english → silicon</span></div>
-    <h2>One sentence becomes running machine code — through four gates</h2>
+    <div class="sec-head"><span class="op">0x02</span><span class="sec-kicker">Pipeline &#183; english &#8594; silicon</span></div>
+    <h2>One sentence becomes running machine code &#8212; through four gates</h2>
     <p class="intro">The host sends your request and the device's self-reported hardware
       manifest to the model. The generated Rust is wrapped in a <span class="mono">no_std</span>
       crate, compiled to a memory-capped wasm module, and streamed over MILO-Link. Before a
       single instruction runs, the receiver checks the frame size, an optional signature, and
       the import whitelist, then executes under fuel metering in a 64&nbsp;KB sandbox.</p>
     <div class="flow">
-      <span class="st">"hold 3 m"</span><span class="ar">→</span>
-      <span class="st">GPT-4o</span><span class="ar">→</span>
-      <span class="st">Rust</span><span class="ar">→</span>
-      <span class="st">wasm · 64 KB</span><span class="ar">→</span>
-      <span class="st">MILO-Link</span><span class="ar">→</span>
-      <span class="st">4 gates</span><span class="ar">→</span>
-      <span class="st">device</span><span class="ar">→</span>
+      <span class="st">"hold 3 m"</span><span class="ar">&#8594;</span>
+      <span class="st">GPT-4o</span><span class="ar">&#8594;</span>
+      <span class="st">Rust</span><span class="ar">&#8594;</span>
+      <span class="st">wasm &#183; 64 KB</span><span class="ar">&#8594;</span>
+      <span class="st">MILO-Link</span><span class="ar">&#8594;</span>
+      <span class="st">4 gates</span><span class="ar">&#8594;</span>
+      <span class="st">device</span><span class="ar">&#8594;</span>
       <span class="st">telemetry</span>
     </div>
     <p class="intro" style="margin-top:24px"><b>The Atomic Alphabet.</b> Every driver an LLM
-      writes is composed of exactly these twelve calls — and only these. No malloc, no printf,
+      writes is composed of exactly these twelve calls &#8212; and only these. No malloc, no printf,
       no OS. That constraint is what makes generated firmware auditable and safe.</p>
     <div class="isa">
       <div class="op-cell"><div class="nm">gpio_set</div><div class="sg">(pin, state)</div></div>
-      <div class="op-cell"><div class="nm">gpio_get</div><div class="sg">(pin) → u32</div></div>
+      <div class="op-cell"><div class="nm">gpio_get</div><div class="sg">(pin) &#8594; u32</div></div>
       <div class="op-cell"><div class="nm">delay_ms</div><div class="sg">(ms)</div></div>
-      <div class="op-cell"><div class="nm">get_uptime_us</div><div class="sg">() → u64</div></div>
-      <div class="op-cell"><div class="nm">i2c_transfer</div><div class="sg">(addr,tx,rx) → i32</div></div>
-      <div class="op-cell"><div class="nm">spi_transfer</div><div class="sg">(bus,tx,rx) → i32</div></div>
-      <div class="op-cell"><div class="nm">uart_write</div><div class="sg">(bus,ptr,len) → i32</div></div>
-      <div class="op-cell"><div class="nm">uart_read</div><div class="sg">(bus,…,to) → i32</div></div>
+      <div class="op-cell"><div class="nm">get_uptime_us</div><div class="sg">() &#8594; u64</div></div>
+      <div class="op-cell"><div class="nm">i2c_transfer</div><div class="sg">(addr,tx,rx) &#8594; i32</div></div>
+      <div class="op-cell"><div class="nm">spi_transfer</div><div class="sg">(bus,tx,rx) &#8594; i32</div></div>
+      <div class="op-cell"><div class="nm">uart_write</div><div class="sg">(bus,ptr,len) &#8594; i32</div></div>
+      <div class="op-cell"><div class="nm">uart_read</div><div class="sg">(bus,&#8230;,to) &#8594; i32</div></div>
       <div class="op-cell"><div class="nm">pwm_set</div><div class="sg">(ch, duty)</div></div>
-      <div class="op-cell"><div class="nm">adc_read</div><div class="sg">(ch) → u32</div></div>
+      <div class="op-cell"><div class="nm">adc_read</div><div class="sg">(ch) &#8594; u32</div></div>
       <div class="op-cell"><div class="nm">log_msg</div><div class="sg">(ptr, len)</div></div>
-      <div class="op-cell"><div class="nm">get_param</div><div class="sg">(slot) → u32</div></div>
+      <div class="op-cell"><div class="nm">get_param</div><div class="sg">(slot) &#8594; u32</div></div>
     </div>
   </section>
 
   <!-- SWARM -->
   <section id="swarm">
-    <div class="sec-head"><span class="op">0x09</span><span class="sec-kicker">Scenario A · hot-swap · demos/swarm_demo.py</span></div>
-    <h2>A laptop flies five drones, retasks them mid-air, and repairs one — in 48 seconds</h2>
+    <div class="sec-head"><span class="op">0x09</span><span class="sec-kicker">Scenario A &#183; hot-swap &#183; demos/swarm_demo.py</span></div>
+    <h2>A laptop flies five drones, retasks them mid-air, and repairs one &#8212; in 48 seconds</h2>
     <p class="intro">Five emulated quadcopters run <b>one 943-byte controller</b> that reads
       its altitude target from a live parameter slot: the echelon is data, not code. Mid-flight
       the whole formation is retasked with a 0.05&nbsp;ms broadcast. Then a motor fault is
-      injected — and the interesting part begins.</p>
+      injected &#8212; and the interesting part begins.</p>
     <div class="scenario">
       <span class="op-tag mono">0x09 HOT_SWAP</span>
       <h3>The fault droops, the LLM ships the fix, the drone climbs back</h3>
-      <p class="story">A pure-proportional controller under a thrust deficit doesn't crash — it
+      <p class="story">A pure-proportional controller under a thrust deficit doesn't crash &#8212; it
         settles 1.9&nbsp;m below its commanded altitude, exactly as control theory predicts. The
         host asks GPT-4o for a controller with integral action; 6.9&nbsp;seconds later a 975-byte
         module is <b>hot-swapped onto the running drone</b>. It clears the import whitelist,
@@ -375,19 +375,19 @@
         never notice.</p>
       <figure class="chart" aria-label="Altitude of five drones over 48 seconds"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 450" role="img">
   
-<rect class="bg" x="0" y="0" width="880" height="450" rx="8"/><text class="txt" x="56" y="30">Five-drone swarm — altitude under live LLM command</text><text class="txt2" x="56" y="50">Emulated fleet running the real MILO runtime · retask, fault and in-flight hot-swap repair</text><line class="grid" x1="56" y1="404.0" x2="856" y2="404.0"/><text class="tick" x="48" y="408.0" text-anchor="end">0</text><line class="grid" x1="56" y1="337.5" x2="856" y2="337.5"/><text class="tick" x="48" y="341.5" text-anchor="end">1</text><line class="grid" x1="56" y1="271.0" x2="856" y2="271.0"/><text class="tick" x="48" y="275.0" text-anchor="end">2</text><line class="grid" x1="56" y1="204.4" x2="856" y2="204.4"/><text class="tick" x="48" y="208.4" text-anchor="end">3</text><line class="grid" x1="56" y1="137.9" x2="856" y2="137.9"/><text class="tick" x="48" y="141.9" text-anchor="end">4</text><text class="txt2" x="856" y="422" text-anchor="end">time</text><text class="txt2" transform="rotate(-90 16 251)" x="16" y="251" text-anchor="middle">altitude (m)</text><text class="tick" x="56.0" y="422" text-anchor="middle">0s</text><text class="tick" x="223.1" y="422" text-anchor="middle">10s</text><text class="tick" x="390.3" y="422" text-anchor="middle">20s</text><text class="tick" x="557.4" y="422" text-anchor="middle">30s</text><text class="tick" x="724.5" y="422" text-anchor="middle">40s</text><line class="evt" x1="71.9" y1="92" x2="71.9" y2="404"/><text class="txtm" x="75.9" y="100">launch</text><line class="evt" x1="239.1" y1="92" x2="239.1" y2="404"/><text class="txtm" x="243.1" y="100">retask → 3.0 m</text><line class="evt" x1="389.6" y1="92" x2="389.6" y2="404"/><text class="txtm" x="393.6" y="100">motor fault</text><line class="evt" x1="654.9" y1="92" x2="654.9" y2="404"/><text class="txtm" x="658.9" y="100">LLM hot-swap</text><line class="evt" x1="855.6" y1="92" x2="855.6" y2="404"/><text class="txtm" x="851.6" y="100" text-anchor="end">land</text><polyline points="71.9,404.0 79.0,397.8 86.1,383.8 93.3,365.7 100.4,346.6 107.7,328.8 114.9,314.5 122.1,303.9 129.3,297.2 136.6,294.0 143.6,293.6 150.8,295.3 157.8,298.1 165.2,301.6 172.4,305.0 179.5,308.1 186.6,310.5 193.6,312.1 200.7,313.1 208.1,313.6 215.3,313.5 222.4,313.1 229.6,312.6 236.7,311.9 243.8,308.3 251.0,294.2 258.2,274.0 265.3,252.3 272.5,231.2 279.7,213.3 286.7,200.0 293.9,190.9 301.0,185.9 308.2,184.5 315.3,185.6 322.5,188.5 329.7,192.4 336.8,196.4 344.0,200.0 351.3,203.2 358.5,205.4 365.8,206.9 373.0,207.6 380.2,207.6 387.3,207.4 394.6,206.8 401.7,206.0 408.8,205.3 415.9,204.7 423.0,204.2 430.1,203.8 437.3,203.6 444.8,203.5 451.9,203.5 459.1,203.6 466.2,203.7 473.3,203.9 480.5,204.0 487.7,204.1 494.8,204.1 501.9,204.2 509.2,204.2 516.3,204.2 523.4,204.2 530.6,204.2 537.8,204.2 545.0,204.2 552.1,204.2 559.1,204.2 566.3,204.2 573.6,204.2 580.7,204.2 587.9,204.2 595.0,204.2 602.3,204.2 609.3,204.2 616.5,204.2 623.6,204.2 630.8,204.2 638.1,204.2 645.3,204.2 652.4,204.2 659.8,204.2 667.0,204.2 674.1,204.2 681.2,204.2 688.4,204.2 695.6,204.2 702.8,204.2 710.0,204.2 717.2,204.2 724.1,204.2 731.2,204.2 738.3,204.2 745.4,204.2 752.4,204.2 759.7,204.2 766.9,204.2 774.1,204.2 781.4,204.2 788.6,204.2 795.7,204.2 802.9,204.2 810.1,204.2 817.2,204.2 824.4,204.2 831.4,204.2 838.6,204.2 845.7,204.2 852.9,204.2" fill="none" class="s0" stroke-width="2.0" stroke-linejoin="round" stroke-linecap="round" /><polyline points="72.0,404.0 79.1,394.7 86.1,373.9 93.3,346.7 100.5,317.9 107.8,291.5 114.9,270.1 121.9,254.4 129.2,244.1 136.4,239.3 143.5,238.6 150.7,241.0 157.9,245.3 164.9,250.4 172.3,255.6 179.6,260.2 186.6,263.8 193.6,266.3 200.6,267.8 207.8,268.5 214.9,268.5 222.0,268.0 229.1,267.1 236.2,266.2 243.1,264.2 250.3,256.7 257.4,245.5 264.4,233.2 271.6,221.1 278.7,210.6 285.9,202.5 293.1,197.0 300.4,193.9 307.5,192.9 314.7,193.5 321.6,195.0 328.7,197.1 336.0,199.5 343.2,201.6 350.4,203.4 357.5,204.7 364.6,205.6 371.7,206.0 378.9,206.2 386.1,206.0 393.2,205.6 400.4,205.2 407.5,204.8 414.8,204.4 422.1,204.1 429.1,203.9 436.3,203.8 443.5,203.7 450.4,203.7 457.5,203.8 464.6,203.9 471.7,203.9 478.7,204.0 485.9,204.0 493.3,204.0 500.6,204.0 507.8,204.0 514.9,204.0 522.0,204.0 529.4,204.0 536.5,204.0 543.6,204.0 550.9,204.0 558.1,204.0 565.3,204.0 572.6,204.0 579.9,204.0 587.2,204.0 594.3,204.0 601.5,204.0 608.7,204.0 616.0,204.0 623.0,204.0 630.1,204.0 637.3,204.0 644.6,204.0 651.7,204.0 658.8,204.0 666.0,204.0 673.1,204.0 680.3,204.0 687.5,204.0 694.7,204.0 701.8,204.0 708.9,204.0 716.1,204.0 723.4,204.0 730.8,204.0 738.0,204.0 745.3,204.0 752.6,204.0 759.7,204.0 766.8,204.0 774.0,204.0 781.0,204.0 788.1,204.0 795.2,204.0 802.3,204.0 809.4,204.0 816.5,204.0 823.6,204.0 830.7,204.0 837.9,204.0 845.1,204.0 852.3,204.0" fill="none" class="s1" stroke-width="2.0" stroke-linejoin="round" stroke-linecap="round" /><polyline points="72.0,404.0 79.1,388.5 86.2,353.6 93.3,308.5 100.5,260.9 107.6,217.7 114.7,182.0 121.8,155.2 128.8,138.6 136.1,129.9 143.2,128.6 150.3,132.3 157.6,139.5 164.8,148.2 172.2,157.0 179.5,164.7 186.7,170.7 194.0,175.0 201.2,177.5 208.3,178.5 215.5,178.4 222.7,177.4 229.9,176.0 237.0,174.4 244.0,173.8 251.2,176.7 258.3,181.7 265.5,187.8 272.5,193.9 279.7,199.3 286.8,203.7 294.0,206.8 301.1,208.8 308.4,209.6 315.6,209.6 322.7,208.9 329.9,207.9 337.1,206.8 344.3,205.7 351.4,204.7 358.6,204.0 365.8,203.5 373.0,203.2 380.1,203.1 387.2,203.1 394.4,203.2 401.5,203.4 408.6,203.6 415.8,203.8 423.0,204.0 430.1,204.1 437.2,204.2 444.4,204.2 451.6,204.3 458.8,204.3 465.9,204.4 473.1,204.4 480.2,204.4 487.3,204.4 494.4,204.4 501.5,204.4 508.5,204.4 515.6,204.4 522.8,204.4 529.9,204.4 537.1,204.4 544.3,204.4 551.4,204.4 558.6,204.4 565.9,204.4 573.0,204.4 580.1,204.4 587.2,204.4 594.3,204.4 601.5,204.4 608.8,204.4 616.0,204.4 623.1,204.4 630.2,204.4 637.3,204.4 644.5,204.4 651.6,204.4 658.7,204.4 665.8,204.4 672.8,204.4 680.0,204.4 687.2,204.4 694.4,204.4 701.6,204.4 708.8,204.4 716.0,204.4 723.2,204.4 730.3,204.4 737.5,204.4 744.4,204.4 751.6,204.4 758.9,204.4 766.0,204.4 773.1,204.4 780.3,204.4 787.6,204.4 794.7,204.4 802.0,204.4 809.1,204.4 816.1,204.4 823.2,204.4 830.2,204.4 837.3,204.4 844.3,204.4 851.5,204.4" fill="none" class="s3" stroke-width="2.0" stroke-linejoin="round" stroke-linecap="round" /><polyline points="72.0,404.0 79.2,385.0 86.4,342.1 93.7,286.1 101.0,228.3 108.1,176.8 115.2,134.7 122.4,103.7 129.5,98.0 136.6,98.0 143.8,98.0 151.0,98.0 158.2,98.0 165.3,98.0 172.3,107.6 179.3,116.6 186.4,123.8 193.6,129.0 200.7,132.1 207.8,133.5 214.9,133.3 222.0,132.3 229.1,130.6 236.4,128.7 243.5,128.5 250.7,136.2 257.9,149.4 265.1,164.7 272.5,180.6 279.6,193.9 286.9,204.7 294.0,212.0 301.1,216.2 308.3,217.9 315.4,217.5 322.5,215.8 329.7,213.2 336.7,210.4 343.8,207.8 351.0,205.4 358.0,203.6 365.1,202.4 372.3,201.8 379.3,201.6 386.5,201.7 393.6,202.1 400.8,202.6 407.9,203.1 415.2,203.6 422.3,204.0 429.4,204.3 436.6,204.5 443.9,204.6 451.0,204.6 458.2,204.4 465.4,204.4 472.6,204.3 479.7,204.2 486.9,204.2 494.0,204.2 501.2,204.2 508.4,204.1 515.4,204.1 522.6,204.1 529.8,204.1 537.1,204.1 544.1,204.1 551.3,204.1 558.5,204.1 565.6,204.1 572.8,204.1 579.9,204.1 586.9,204.1 593.9,204.1 600.9,204.1 608.0,204.1 615.2,204.1 622.4,204.1 629.5,204.1 636.6,204.1 643.8,204.1 651.1,204.1 658.1,204.1 665.2,204.1 672.2,204.1 679.3,204.1 686.5,204.1 693.6,204.1 700.7,204.1 707.9,204.1 715.2,204.1 722.2,204.1 729.4,204.1 736.6,204.1 743.8,204.1 751.1,204.1 758.2,204.1 765.2,204.1 772.4,204.1 779.6,204.1 786.8,204.1 794.1,204.1 801.3,204.1 808.4,204.1 815.4,204.1 822.6,204.1 829.9,204.1 837.1,204.1 844.4,204.1 851.5,204.1" fill="none" class="s4" stroke-width="2.0" stroke-linejoin="round" stroke-linecap="round" /><polyline points="71.9,404.0 79.1,391.6 86.2,363.4 93.4,326.7 100.8,287.7 108.0,253.1 115.0,225.1 122.1,204.1 129.2,191.0 136.4,184.5 143.5,183.7 150.7,186.9 157.9,192.7 165.1,199.5 172.3,206.4 179.6,212.6 186.7,217.3 193.8,220.7 200.9,222.7 207.9,223.5 215.2,223.5 222.5,222.7 229.7,221.6 237.0,220.3 244.2,218.7 251.3,216.0 258.5,212.7 265.5,209.5 272.7,206.6 279.7,204.3 286.8,202.6 294.1,201.6 301.1,201.2 308.2,201.2 315.5,201.4 322.7,202.0 329.8,202.6 336.8,203.2 344.0,203.7 351.1,204.1 358.1,204.4 365.3,204.6 372.4,204.6 379.6,204.6 386.8,204.5 393.9,206.8 401.2,217.5 408.4,233.0 415.4,250.2 422.5,267.4 429.7,282.9 436.9,295.8 444.2,305.4 451.5,311.9 458.7,315.4 465.9,316.5 473.1,315.9 480.3,314.1 487.5,311.7 494.7,309.0 501.8,306.5 509.1,304.2 516.3,302.4 523.4,301.1 530.6,300.3 537.8,299.8 545.0,299.8 552.2,299.9 559.4,300.2 566.6,300.6 573.8,301.0 581.0,301.4 588.3,301.6 595.6,301.9 602.9,302.1 610.2,302.2 617.3,302.3 624.5,302.3 631.6,302.2 638.8,302.2 645.9,302.1 653.2,302.1 660.5,303.9 667.6,309.2 674.8,316.4 682.0,324.0 689.2,330.9 696.3,336.3 703.5,339.9 710.6,341.1 717.9,340.1 725.1,336.8 732.3,331.3 739.5,324.0 746.8,314.9 754.0,304.7 761.1,293.6 768.4,281.9 775.6,269.9 782.7,258.2 789.9,246.7 797.0,236.0 804.1,226.0 811.1,217.0 818.2,209.0 825.4,201.9 832.4,196.1 839.6,191.3 846.8,187.5 853.8,184.6" fill="none" class="s2" stroke-width="3.0" stroke-linejoin="round" stroke-linecap="round" /><line class="s0" x1="56" y1="68" x2="74" y2="68" stroke-width="3"/><text class="txt2" x="80" y="72">drone-1</text><line class="s1" x1="165" y1="68" x2="183" y2="68" stroke-width="3"/><text class="txt2" x="189" y="72">drone-2</text><line class="s2" x1="274" y1="68" x2="292" y2="68" stroke-width="3"/><text class="txt2" x="298" y="72">drone-3</text><line class="s3" x1="383" y1="68" x2="401" y2="68" stroke-width="3"/><text class="txt2" x="407" y="72">drone-4</text><line class="s4" x1="492" y1="68" x2="510" y2="68" stroke-width="3"/><text class="txt2" x="516" y="72">drone-5</text><text class="txt2" x="471.9" y="332.5">drone-3 droops to 1.3 m</text><circle class="sf2 ring" cx="465.9" cy="316.5" r="4"/></svg></figure>
-      <details class="data"><summary>data table — altitudes & timings</summary><div class="tscroll">
-        <table class="m"><caption>measured · demos/evidence/swarm_events.json</caption>
+<rect class="bg" x="0" y="0" width="880" height="450" rx="8"/><text class="txt" x="56" y="30">Five-drone swarm &#8212; altitude under live LLM command</text><text class="txt2" x="56" y="50">Emulated fleet running the real MILO runtime &#183; retask, fault and in-flight hot-swap repair</text><line class="grid" x1="56" y1="404.0" x2="856" y2="404.0"/><text class="tick" x="48" y="408.0" text-anchor="end">0</text><line class="grid" x1="56" y1="337.5" x2="856" y2="337.5"/><text class="tick" x="48" y="341.5" text-anchor="end">1</text><line class="grid" x1="56" y1="271.0" x2="856" y2="271.0"/><text class="tick" x="48" y="275.0" text-anchor="end">2</text><line class="grid" x1="56" y1="204.4" x2="856" y2="204.4"/><text class="tick" x="48" y="208.4" text-anchor="end">3</text><line class="grid" x1="56" y1="137.9" x2="856" y2="137.9"/><text class="tick" x="48" y="141.9" text-anchor="end">4</text><text class="txt2" x="856" y="422" text-anchor="end">time</text><text class="txt2" transform="rotate(-90 16 251)" x="16" y="251" text-anchor="middle">altitude (m)</text><text class="tick" x="56.0" y="422" text-anchor="middle">0s</text><text class="tick" x="223.1" y="422" text-anchor="middle">10s</text><text class="tick" x="390.3" y="422" text-anchor="middle">20s</text><text class="tick" x="557.4" y="422" text-anchor="middle">30s</text><text class="tick" x="724.5" y="422" text-anchor="middle">40s</text><line class="evt" x1="71.9" y1="92" x2="71.9" y2="404"/><text class="txtm" x="75.9" y="100">launch</text><line class="evt" x1="239.1" y1="92" x2="239.1" y2="404"/><text class="txtm" x="243.1" y="100">retask &#8594; 3.0 m</text><line class="evt" x1="389.6" y1="92" x2="389.6" y2="404"/><text class="txtm" x="393.6" y="100">motor fault</text><line class="evt" x1="654.9" y1="92" x2="654.9" y2="404"/><text class="txtm" x="658.9" y="100">LLM hot-swap</text><line class="evt" x1="855.6" y1="92" x2="855.6" y2="404"/><text class="txtm" x="851.6" y="100" text-anchor="end">land</text><polyline points="71.9,404.0 79.0,397.8 86.1,383.8 93.3,365.7 100.4,346.6 107.7,328.8 114.9,314.5 122.1,303.9 129.3,297.2 136.6,294.0 143.6,293.6 150.8,295.3 157.8,298.1 165.2,301.6 172.4,305.0 179.5,308.1 186.6,310.5 193.6,312.1 200.7,313.1 208.1,313.6 215.3,313.5 222.4,313.1 229.6,312.6 236.7,311.9 243.8,308.3 251.0,294.2 258.2,274.0 265.3,252.3 272.5,231.2 279.7,213.3 286.7,200.0 293.9,190.9 301.0,185.9 308.2,184.5 315.3,185.6 322.5,188.5 329.7,192.4 336.8,196.4 344.0,200.0 351.3,203.2 358.5,205.4 365.8,206.9 373.0,207.6 380.2,207.6 387.3,207.4 394.6,206.8 401.7,206.0 408.8,205.3 415.9,204.7 423.0,204.2 430.1,203.8 437.3,203.6 444.8,203.5 451.9,203.5 459.1,203.6 466.2,203.7 473.3,203.9 480.5,204.0 487.7,204.1 494.8,204.1 501.9,204.2 509.2,204.2 516.3,204.2 523.4,204.2 530.6,204.2 537.8,204.2 545.0,204.2 552.1,204.2 559.1,204.2 566.3,204.2 573.6,204.2 580.7,204.2 587.9,204.2 595.0,204.2 602.3,204.2 609.3,204.2 616.5,204.2 623.6,204.2 630.8,204.2 638.1,204.2 645.3,204.2 652.4,204.2 659.8,204.2 667.0,204.2 674.1,204.2 681.2,204.2 688.4,204.2 695.6,204.2 702.8,204.2 710.0,204.2 717.2,204.2 724.1,204.2 731.2,204.2 738.3,204.2 745.4,204.2 752.4,204.2 759.7,204.2 766.9,204.2 774.1,204.2 781.4,204.2 788.6,204.2 795.7,204.2 802.9,204.2 810.1,204.2 817.2,204.2 824.4,204.2 831.4,204.2 838.6,204.2 845.7,204.2 852.9,204.2" fill="none" class="s0" stroke-width="2.0" stroke-linejoin="round" stroke-linecap="round" /><polyline points="72.0,404.0 79.1,394.7 86.1,373.9 93.3,346.7 100.5,317.9 107.8,291.5 114.9,270.1 121.9,254.4 129.2,244.1 136.4,239.3 143.5,238.6 150.7,241.0 157.9,245.3 164.9,250.4 172.3,255.6 179.6,260.2 186.6,263.8 193.6,266.3 200.6,267.8 207.8,268.5 214.9,268.5 222.0,268.0 229.1,267.1 236.2,266.2 243.1,264.2 250.3,256.7 257.4,245.5 264.4,233.2 271.6,221.1 278.7,210.6 285.9,202.5 293.1,197.0 300.4,193.9 307.5,192.9 314.7,193.5 321.6,195.0 328.7,197.1 336.0,199.5 343.2,201.6 350.4,203.4 357.5,204.7 364.6,205.6 371.7,206.0 378.9,206.2 386.1,206.0 393.2,205.6 400.4,205.2 407.5,204.8 414.8,204.4 422.1,204.1 429.1,203.9 436.3,203.8 443.5,203.7 450.4,203.7 457.5,203.8 464.6,203.9 471.7,203.9 478.7,204.0 485.9,204.0 493.3,204.0 500.6,204.0 507.8,204.0 514.9,204.0 522.0,204.0 529.4,204.0 536.5,204.0 543.6,204.0 550.9,204.0 558.1,204.0 565.3,204.0 572.6,204.0 579.9,204.0 587.2,204.0 594.3,204.0 601.5,204.0 608.7,204.0 616.0,204.0 623.0,204.0 630.1,204.0 637.3,204.0 644.6,204.0 651.7,204.0 658.8,204.0 666.0,204.0 673.1,204.0 680.3,204.0 687.5,204.0 694.7,204.0 701.8,204.0 708.9,204.0 716.1,204.0 723.4,204.0 730.8,204.0 738.0,204.0 745.3,204.0 752.6,204.0 759.7,204.0 766.8,204.0 774.0,204.0 781.0,204.0 788.1,204.0 795.2,204.0 802.3,204.0 809.4,204.0 816.5,204.0 823.6,204.0 830.7,204.0 837.9,204.0 845.1,204.0 852.3,204.0" fill="none" class="s1" stroke-width="2.0" stroke-linejoin="round" stroke-linecap="round" /><polyline points="72.0,404.0 79.1,388.5 86.2,353.6 93.3,308.5 100.5,260.9 107.6,217.7 114.7,182.0 121.8,155.2 128.8,138.6 136.1,129.9 143.2,128.6 150.3,132.3 157.6,139.5 164.8,148.2 172.2,157.0 179.5,164.7 186.7,170.7 194.0,175.0 201.2,177.5 208.3,178.5 215.5,178.4 222.7,177.4 229.9,176.0 237.0,174.4 244.0,173.8 251.2,176.7 258.3,181.7 265.5,187.8 272.5,193.9 279.7,199.3 286.8,203.7 294.0,206.8 301.1,208.8 308.4,209.6 315.6,209.6 322.7,208.9 329.9,207.9 337.1,206.8 344.3,205.7 351.4,204.7 358.6,204.0 365.8,203.5 373.0,203.2 380.1,203.1 387.2,203.1 394.4,203.2 401.5,203.4 408.6,203.6 415.8,203.8 423.0,204.0 430.1,204.1 437.2,204.2 444.4,204.2 451.6,204.3 458.8,204.3 465.9,204.4 473.1,204.4 480.2,204.4 487.3,204.4 494.4,204.4 501.5,204.4 508.5,204.4 515.6,204.4 522.8,204.4 529.9,204.4 537.1,204.4 544.3,204.4 551.4,204.4 558.6,204.4 565.9,204.4 573.0,204.4 580.1,204.4 587.2,204.4 594.3,204.4 601.5,204.4 608.8,204.4 616.0,204.4 623.1,204.4 630.2,204.4 637.3,204.4 644.5,204.4 651.6,204.4 658.7,204.4 665.8,204.4 672.8,204.4 680.0,204.4 687.2,204.4 694.4,204.4 701.6,204.4 708.8,204.4 716.0,204.4 723.2,204.4 730.3,204.4 737.5,204.4 744.4,204.4 751.6,204.4 758.9,204.4 766.0,204.4 773.1,204.4 780.3,204.4 787.6,204.4 794.7,204.4 802.0,204.4 809.1,204.4 816.1,204.4 823.2,204.4 830.2,204.4 837.3,204.4 844.3,204.4 851.5,204.4" fill="none" class="s3" stroke-width="2.0" stroke-linejoin="round" stroke-linecap="round" /><polyline points="72.0,404.0 79.2,385.0 86.4,342.1 93.7,286.1 101.0,228.3 108.1,176.8 115.2,134.7 122.4,103.7 129.5,98.0 136.6,98.0 143.8,98.0 151.0,98.0 158.2,98.0 165.3,98.0 172.3,107.6 179.3,116.6 186.4,123.8 193.6,129.0 200.7,132.1 207.8,133.5 214.9,133.3 222.0,132.3 229.1,130.6 236.4,128.7 243.5,128.5 250.7,136.2 257.9,149.4 265.1,164.7 272.5,180.6 279.6,193.9 286.9,204.7 294.0,212.0 301.1,216.2 308.3,217.9 315.4,217.5 322.5,215.8 329.7,213.2 336.7,210.4 343.8,207.8 351.0,205.4 358.0,203.6 365.1,202.4 372.3,201.8 379.3,201.6 386.5,201.7 393.6,202.1 400.8,202.6 407.9,203.1 415.2,203.6 422.3,204.0 429.4,204.3 436.6,204.5 443.9,204.6 451.0,204.6 458.2,204.4 465.4,204.4 472.6,204.3 479.7,204.2 486.9,204.2 494.0,204.2 501.2,204.2 508.4,204.1 515.4,204.1 522.6,204.1 529.8,204.1 537.1,204.1 544.1,204.1 551.3,204.1 558.5,204.1 565.6,204.1 572.8,204.1 579.9,204.1 586.9,204.1 593.9,204.1 600.9,204.1 608.0,204.1 615.2,204.1 622.4,204.1 629.5,204.1 636.6,204.1 643.8,204.1 651.1,204.1 658.1,204.1 665.2,204.1 672.2,204.1 679.3,204.1 686.5,204.1 693.6,204.1 700.7,204.1 707.9,204.1 715.2,204.1 722.2,204.1 729.4,204.1 736.6,204.1 743.8,204.1 751.1,204.1 758.2,204.1 765.2,204.1 772.4,204.1 779.6,204.1 786.8,204.1 794.1,204.1 801.3,204.1 808.4,204.1 815.4,204.1 822.6,204.1 829.9,204.1 837.1,204.1 844.4,204.1 851.5,204.1" fill="none" class="s4" stroke-width="2.0" stroke-linejoin="round" stroke-linecap="round" /><polyline points="71.9,404.0 79.1,391.6 86.2,363.4 93.4,326.7 100.8,287.7 108.0,253.1 115.0,225.1 122.1,204.1 129.2,191.0 136.4,184.5 143.5,183.7 150.7,186.9 157.9,192.7 165.1,199.5 172.3,206.4 179.6,212.6 186.7,217.3 193.8,220.7 200.9,222.7 207.9,223.5 215.2,223.5 222.5,222.7 229.7,221.6 237.0,220.3 244.2,218.7 251.3,216.0 258.5,212.7 265.5,209.5 272.7,206.6 279.7,204.3 286.8,202.6 294.1,201.6 301.1,201.2 308.2,201.2 315.5,201.4 322.7,202.0 329.8,202.6 336.8,203.2 344.0,203.7 351.1,204.1 358.1,204.4 365.3,204.6 372.4,204.6 379.6,204.6 386.8,204.5 393.9,206.8 401.2,217.5 408.4,233.0 415.4,250.2 422.5,267.4 429.7,282.9 436.9,295.8 444.2,305.4 451.5,311.9 458.7,315.4 465.9,316.5 473.1,315.9 480.3,314.1 487.5,311.7 494.7,309.0 501.8,306.5 509.1,304.2 516.3,302.4 523.4,301.1 530.6,300.3 537.8,299.8 545.0,299.8 552.2,299.9 559.4,300.2 566.6,300.6 573.8,301.0 581.0,301.4 588.3,301.6 595.6,301.9 602.9,302.1 610.2,302.2 617.3,302.3 624.5,302.3 631.6,302.2 638.8,302.2 645.9,302.1 653.2,302.1 660.5,303.9 667.6,309.2 674.8,316.4 682.0,324.0 689.2,330.9 696.3,336.3 703.5,339.9 710.6,341.1 717.9,340.1 725.1,336.8 732.3,331.3 739.5,324.0 746.8,314.9 754.0,304.7 761.1,293.6 768.4,281.9 775.6,269.9 782.7,258.2 789.9,246.7 797.0,236.0 804.1,226.0 811.1,217.0 818.2,209.0 825.4,201.9 832.4,196.1 839.6,191.3 846.8,187.5 853.8,184.6" fill="none" class="s2" stroke-width="3.0" stroke-linejoin="round" stroke-linecap="round" /><line class="s0" x1="56" y1="68" x2="74" y2="68" stroke-width="3"/><text class="txt2" x="80" y="72">drone-1</text><line class="s1" x1="165" y1="68" x2="183" y2="68" stroke-width="3"/><text class="txt2" x="189" y="72">drone-2</text><line class="s2" x1="274" y1="68" x2="292" y2="68" stroke-width="3"/><text class="txt2" x="298" y="72">drone-3</text><line class="s3" x1="383" y1="68" x2="401" y2="68" stroke-width="3"/><text class="txt2" x="407" y="72">drone-4</text><line class="s4" x1="492" y1="68" x2="510" y2="68" stroke-width="3"/><text class="txt2" x="516" y="72">drone-5</text><text class="txt2" x="471.9" y="332.5">drone-3 droops to 1.3 m</text><circle class="sf2 ring" cx="465.9" cy="316.5" r="4"/></svg></figure>
+      <details class="data"><summary>data table &#8212; altitudes & timings</summary><div class="tscroll">
+        <table class="m"><caption>measured &#183; demos/evidence/swarm_events.json</caption>
         <tr><th>Event</th><th>t</th><th>Measurement</th></tr>
-        <tr><td>Compile controller</td><td>t+1.8s</td><td>943 B · 571 ms</td></tr>
+        <tr><td>Compile controller</td><td>t+1.8s</td><td>943 B &#183; 571 ms</td></tr>
         <tr><td>Parallel push, 5 drones</td><td>t+1.8s</td><td>&lt; 1 ms</td></tr>
         <tr><td>Formation retask broadcast</td><td>t+11.4s</td><td>0.05 ms, no recompile</td></tr>
-        <tr><td>Motor fault → droop</td><td>t+20.4s</td><td>−1.9 m below target</td></tr>
-        <tr><td>GPT-4o writes PI repair</td><td>t+35.9s</td><td>975 B · 6.9 s · first try</td></tr>
-        <tr><td>Hot-swap → recovery</td><td>t+45s</td><td>±15 cm in 9.5 s</td></tr>
+        <tr><td>Motor fault &#8594; droop</td><td>t+20.4s</td><td>&#8722;1.9 m below target</td></tr>
+        <tr><td>GPT-4o writes PI repair</td><td>t+35.9s</td><td>975 B &#183; 6.9 s &#183; first try</td></tr>
+        <tr><td>Hot-swap &#8594; recovery</td><td>t+45s</td><td>&#177;15 cm in 9.5 s</td></tr>
         <tr><td>Coordinated landing</td><td>t+47.9s</td><td>5/5 ok, motors safed</td></tr>
         </table></div></details>
-      <div class="code"><span class="c">// the controller GPT-4o wrote mid-demo — swarm_llm_driver.rs</span>
+      <div class="code"><span class="c">// the controller GPT-4o wrote mid-demo &#8212; swarm_llm_driver.rs</span>
 <span class="k">let</span> err = target_cm <span class="k">as</span> i32 - altitude_cm <span class="k">as</span> i32;
 accumulator += err / 24;               <span class="c">// integral action beats the droop</span>
 <span class="k">let</span> command = (accumulator + err * 3).clamp(2500, 9500) <span class="k">as</span> u32;
@@ -397,46 +397,46 @@ pwm_set(0, command); pwm_set(1, command); pwm_set(2, command); pwm_set(3, comman
 
   <!-- FACTORY -->
   <section id="factory">
-    <div class="sec-head"><span class="op">0x08</span><span class="sec-kicker">Scenario B · autonomous cell · demos/factory_demo.py</span></div>
-    <h2>A factory cell that diagnoses itself — and rewrites its own firmware</h2>
-    <p class="intro">Three machines — a conveyor, a reflow oven on naive open-loop vendor
-      firmware, and a pick arm — under one control station. Two incidents are injected without
+    <div class="sec-head"><span class="op">0x08</span><span class="sec-kicker">Scenario B &#183; autonomous cell &#183; demos/factory_demo.py</span></div>
+    <h2>A factory cell that diagnoses itself &#8212; and rewrites its own firmware</h2>
+    <p class="intro">Three machines &#8212; a conveyor, a reflow oven on naive open-loop vendor
+      firmware, and a pick arm &#8212; under one control station. Two incidents are injected without
       telling the controller. Both are handled autonomously, <b>with GPT-4o as the supervisor
       and MILO as its hands</b>.</p>
     <div class="scenario">
       <span class="op-tag mono">0x0A SIGNED_PUSH</span>
       <h3>The heater drifts, so the LLM replaces the control law</h3>
       <p class="story">When the oven's element starts running 35% hot, a new set-point wouldn't
-        fix it — the firmware itself is wrong. The station catches 175.9&nbsp;°C against a
-        165&nbsp;°C limit, GPT-4o diagnoses the drift from telemetry, writes a <b>closed-loop
+        fix it &#8212; the firmware itself is wrong. The station catches 175.9&nbsp;&#176;C against a
+        165&nbsp;&#176;C limit, GPT-4o diagnoses the drift from telemetry, writes a <b>closed-loop
         controller</b> (835 B, 4.7 s), and pushes it between production cycles. The oven pulls
-        back inside limits within one cycle and holds 148&nbsp;°C for the rest of the shift — on
+        back inside limits within one cycle and holds 148&nbsp;&#176;C for the rest of the shift &#8212; on
         hardware whose behavior changed under it.</p>
       <figure class="chart" aria-label="Oven temperature over the shift"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" role="img">
   
-<rect class="bg" x="0" y="0" width="880" height="400" rx="8"/><text class="txt" x="56" y="30">Oven chamber temperature — heater drift caught and corrected</text><text class="txt2" x="56" y="50">Open-loop vendor firmware overheats after the element drifts; GPT-4o writes closed-loop firmware, pushed mid-production</text><line class="grid" x1="56" y1="354.0" x2="856" y2="354.0"/><text class="tick" x="48" y="358.0" text-anchor="end">0</text><line class="grid" x1="56" y1="285.0" x2="856" y2="285.0"/><text class="tick" x="48" y="289.0" text-anchor="end">50</text><line class="grid" x1="56" y1="216.0" x2="856" y2="216.0"/><text class="tick" x="48" y="220.0" text-anchor="end">100</text><line class="grid" x1="56" y1="147.0" x2="856" y2="147.0"/><text class="tick" x="48" y="151.0" text-anchor="end">150</text><line class="grid" x1="56" y1="78.0" x2="856" y2="78.0"/><text class="tick" x="48" y="82.0" text-anchor="end">200</text><text class="txt2" transform="rotate(-90 16 216)" x="16" y="216" text-anchor="middle">temperature (°C)</text><text class="tick" x="56.0" y="372" text-anchor="middle">0s</text><text class="tick" x="212.0" y="372" text-anchor="middle">10s</text><text class="tick" x="368.1" y="372" text-anchor="middle">20s</text><text class="tick" x="524.1" y="372" text-anchor="middle">30s</text><text class="tick" x="680.1" y="372" text-anchor="middle">40s</text><text class="tick" x="836.1" y="372" text-anchor="middle">50s</text><line class="serious" x1="56" y1="126.3" x2="856" y2="126.3" stroke-width="1.5" stroke-dasharray="6 4"/><text class="serious-txt" x="852" y="120.3" text-anchor="end">▲ alarm limit 165 °C</text><line class="evt" x1="263.0" y1="72" x2="263.0" y2="354"/><text class="txtm" x="267.0" y="80">element drifts +35%</text><line class="evt" x1="470.8" y1="72" x2="470.8" y2="354"/><text class="txtm" x="474.8" y="80">LLM firmware replaces open-loop</text><polyline points="61.7,319.5 68.0,308.1 74.4,297.3 80.8,287.2 87.2,277.8 93.6,269.0 100.0,260.8 106.4,253.2 112.0,246.8 118.4,240.2 124.8,233.9 131.1,228.1 137.4,222.7 143.8,217.6 150.2,212.9 156.6,208.5 162.1,204.9 168.4,201.1 174.7,197.5 181.0,194.1 187.4,190.9 193.8,188.0 200.2,185.2 206.6,182.6 212.7,180.4 219.1,178.1 225.4,176.0 231.8,174.1 238.2,172.2 244.5,170.6 250.9,169.0 257.3,167.5 263.0,164.7 269.3,159.4 275.7,154.5 282.1,150.0 288.5,145.7 294.9,141.7 301.2,138.1 307.6,134.6 313.1,131.8 319.5,128.7 325.9,125.9 332.3,123.3 338.7,120.8 345.1,118.5 351.4,116.4 357.8,114.3 467.6,111.1 474.0,114.2 480.3,117.5 486.7,121.0 493.1,124.7 499.5,128.3 505.9,132.0 512.2,135.6 518.1,138.8 524.5,139.8 530.9,140.7 537.3,141.7 543.6,142.7 550.0,143.7 556.4,144.7 562.8,145.6 568.8,146.4 575.2,146.8 581.6,147.1 588.0,147.5 594.4,147.8 600.8,148.0 607.2,148.3 613.5,148.4 618.9,148.6 625.3,148.8 631.7,149.0 638.1,149.1 644.4,149.2 650.8,149.2 657.2,149.3 663.5,149.3 761.2,149.2 767.6,149.4 773.9,149.5 780.3,149.6 786.7,149.6 793.1,149.6 799.4,149.6 805.8,149.5 811.4,149.5 817.8,149.6 824.1,149.7 830.6,149.7 836.9,149.8 843.3,149.7 849.6,149.7 856.0,149.6" fill="none" class="s0" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" /><circle class="sf0 ring" cx="856.0" cy="149.6" r="4"/><text class="txt2" x="850.0" y="139.6" text-anchor="end">holds 148 °C despite drifted heater</text></svg></figure>
+<rect class="bg" x="0" y="0" width="880" height="400" rx="8"/><text class="txt" x="56" y="30">Oven chamber temperature &#8212; heater drift caught and corrected</text><text class="txt2" x="56" y="50">Open-loop vendor firmware overheats after the element drifts; GPT-4o writes closed-loop firmware, pushed mid-production</text><line class="grid" x1="56" y1="354.0" x2="856" y2="354.0"/><text class="tick" x="48" y="358.0" text-anchor="end">0</text><line class="grid" x1="56" y1="285.0" x2="856" y2="285.0"/><text class="tick" x="48" y="289.0" text-anchor="end">50</text><line class="grid" x1="56" y1="216.0" x2="856" y2="216.0"/><text class="tick" x="48" y="220.0" text-anchor="end">100</text><line class="grid" x1="56" y1="147.0" x2="856" y2="147.0"/><text class="tick" x="48" y="151.0" text-anchor="end">150</text><line class="grid" x1="56" y1="78.0" x2="856" y2="78.0"/><text class="tick" x="48" y="82.0" text-anchor="end">200</text><text class="txt2" transform="rotate(-90 16 216)" x="16" y="216" text-anchor="middle">temperature (&#176;C)</text><text class="tick" x="56.0" y="372" text-anchor="middle">0s</text><text class="tick" x="212.0" y="372" text-anchor="middle">10s</text><text class="tick" x="368.1" y="372" text-anchor="middle">20s</text><text class="tick" x="524.1" y="372" text-anchor="middle">30s</text><text class="tick" x="680.1" y="372" text-anchor="middle">40s</text><text class="tick" x="836.1" y="372" text-anchor="middle">50s</text><line class="serious" x1="56" y1="126.3" x2="856" y2="126.3" stroke-width="1.5" stroke-dasharray="6 4"/><text class="serious-txt" x="852" y="120.3" text-anchor="end">&#9650; alarm limit 165 &#176;C</text><line class="evt" x1="263.0" y1="72" x2="263.0" y2="354"/><text class="txtm" x="267.0" y="80">element drifts +35%</text><line class="evt" x1="470.8" y1="72" x2="470.8" y2="354"/><text class="txtm" x="474.8" y="80">LLM firmware replaces open-loop</text><polyline points="61.7,319.5 68.0,308.1 74.4,297.3 80.8,287.2 87.2,277.8 93.6,269.0 100.0,260.8 106.4,253.2 112.0,246.8 118.4,240.2 124.8,233.9 131.1,228.1 137.4,222.7 143.8,217.6 150.2,212.9 156.6,208.5 162.1,204.9 168.4,201.1 174.7,197.5 181.0,194.1 187.4,190.9 193.8,188.0 200.2,185.2 206.6,182.6 212.7,180.4 219.1,178.1 225.4,176.0 231.8,174.1 238.2,172.2 244.5,170.6 250.9,169.0 257.3,167.5 263.0,164.7 269.3,159.4 275.7,154.5 282.1,150.0 288.5,145.7 294.9,141.7 301.2,138.1 307.6,134.6 313.1,131.8 319.5,128.7 325.9,125.9 332.3,123.3 338.7,120.8 345.1,118.5 351.4,116.4 357.8,114.3 467.6,111.1 474.0,114.2 480.3,117.5 486.7,121.0 493.1,124.7 499.5,128.3 505.9,132.0 512.2,135.6 518.1,138.8 524.5,139.8 530.9,140.7 537.3,141.7 543.6,142.7 550.0,143.7 556.4,144.7 562.8,145.6 568.8,146.4 575.2,146.8 581.6,147.1 588.0,147.5 594.4,147.8 600.8,148.0 607.2,148.3 613.5,148.4 618.9,148.6 625.3,148.8 631.7,149.0 638.1,149.1 644.4,149.2 650.8,149.2 657.2,149.3 663.5,149.3 761.2,149.2 767.6,149.4 773.9,149.5 780.3,149.6 786.7,149.6 793.1,149.6 799.4,149.6 805.8,149.5 811.4,149.5 817.8,149.6 824.1,149.7 830.6,149.7 836.9,149.8 843.3,149.7 849.6,149.7 856.0,149.6" fill="none" class="s0" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" /><circle class="sf0 ring" cx="856.0" cy="149.6" r="4"/><text class="txt2" x="850.0" y="139.6" text-anchor="end">holds 148 &#176;C despite drifted heater</text></svg></figure>
       <h3 style="margin-top:30px">A jam, diagnosed and cleared by another machine</h3>
       <p class="story">Cycle 10: belt powered, zero items past the photo-sensor. The supervisor
         halts the belt, dispatches the arm for a clear-sweep (limit switches confirm travel), and
-        restores production — <b>4.1 seconds from detection to recovery</b>, throughput identical
+        restores production &#8212; <b>4.1 seconds from detection to recovery</b>, throughput identical
         to the healthy baseline.</p>
       <figure class="chart" aria-label="Conveyor throughput per cycle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 340" role="img">
   
-<rect class="bg" x="0" y="0" width="880" height="340" rx="8"/><text class="txt" x="56" y="30">Conveyor throughput — jam detected, cleared by the arm, restored</text><text class="txt2" x="56" y="50">Items past the photo-sensor per 3-second episode; the zero at cycle 10 is the jam the station caught autonomously</text><line class="grid" x1="56" y1="294.0" x2="856" y2="294.0"/><text class="tick" x="48" y="298.0" text-anchor="end">0</text><line class="grid" x1="56" y1="250.8" x2="856" y2="250.8"/><text class="tick" x="48" y="254.8" text-anchor="end">1</text><line class="grid" x1="56" y1="207.6" x2="856" y2="207.6"/><text class="tick" x="48" y="211.6" text-anchor="end">2</text><line class="grid" x1="56" y1="164.4" x2="856" y2="164.4"/><text class="tick" x="48" y="168.4" text-anchor="end">3</text><line class="grid" x1="56" y1="121.2" x2="856" y2="121.2"/><text class="tick" x="48" y="125.2" text-anchor="end">4</text><line class="grid" x1="56" y1="78.0" x2="856" y2="78.0"/><text class="tick" x="48" y="82.0" text-anchor="end">5</text><text class="txt2" transform="rotate(-90 16 186)" x="16" y="186" text-anchor="middle">items / episode</text><path class="sf0" d="M77.3,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="89.3" y="312" text-anchor="middle">1</text><path class="sf0" d="M144.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="156.0" y="312" text-anchor="middle">2</text><path class="sf0" d="M210.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="222.7" y="312" text-anchor="middle">3</text><path class="sf0" d="M277.3,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="289.3" y="312" text-anchor="middle">4</text><path class="sf0" d="M344.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="356.0" y="312" text-anchor="middle">5</text><path class="sf0" d="M410.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="422.7" y="312" text-anchor="middle">6</text><path class="sf0" d="M477.3,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="489.3" y="312" text-anchor="middle">7</text><path class="sf0" d="M544.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="556.0" y="312" text-anchor="middle">8</text><path class="sf0" d="M610.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="622.7" y="312" text-anchor="middle">9</text><text class="tick" x="689.3" y="312" text-anchor="middle">10</text><text class="serious-txt" x="689.3" y="286.0" text-anchor="middle">✕ jam</text><path class="sf0" d="M744.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="756.0" y="312" text-anchor="middle">11</text><path class="sf0" d="M810.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="822.7" y="312" text-anchor="middle">12</text><text class="txt2" x="456.0" y="332" text-anchor="middle">cycle</text></svg></figure>
+<rect class="bg" x="0" y="0" width="880" height="340" rx="8"/><text class="txt" x="56" y="30">Conveyor throughput &#8212; jam detected, cleared by the arm, restored</text><text class="txt2" x="56" y="50">Items past the photo-sensor per 3-second episode; the zero at cycle 10 is the jam the station caught autonomously</text><line class="grid" x1="56" y1="294.0" x2="856" y2="294.0"/><text class="tick" x="48" y="298.0" text-anchor="end">0</text><line class="grid" x1="56" y1="250.8" x2="856" y2="250.8"/><text class="tick" x="48" y="254.8" text-anchor="end">1</text><line class="grid" x1="56" y1="207.6" x2="856" y2="207.6"/><text class="tick" x="48" y="211.6" text-anchor="end">2</text><line class="grid" x1="56" y1="164.4" x2="856" y2="164.4"/><text class="tick" x="48" y="168.4" text-anchor="end">3</text><line class="grid" x1="56" y1="121.2" x2="856" y2="121.2"/><text class="tick" x="48" y="125.2" text-anchor="end">4</text><line class="grid" x1="56" y1="78.0" x2="856" y2="78.0"/><text class="tick" x="48" y="82.0" text-anchor="end">5</text><text class="txt2" transform="rotate(-90 16 186)" x="16" y="186" text-anchor="middle">items / episode</text><path class="sf0" d="M77.3,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="89.3" y="312" text-anchor="middle">1</text><path class="sf0" d="M144.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="156.0" y="312" text-anchor="middle">2</text><path class="sf0" d="M210.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="222.7" y="312" text-anchor="middle">3</text><path class="sf0" d="M277.3,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="289.3" y="312" text-anchor="middle">4</text><path class="sf0" d="M344.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="356.0" y="312" text-anchor="middle">5</text><path class="sf0" d="M410.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="422.7" y="312" text-anchor="middle">6</text><path class="sf0" d="M477.3,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="489.3" y="312" text-anchor="middle">7</text><path class="sf0" d="M544.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="556.0" y="312" text-anchor="middle">8</text><path class="sf0" d="M610.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="622.7" y="312" text-anchor="middle">9</text><text class="tick" x="689.3" y="312" text-anchor="middle">10</text><text class="serious-txt" x="689.3" y="286.0" text-anchor="middle">&#10005; jam</text><path class="sf0" d="M744.0,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="756.0" y="312" text-anchor="middle">11</text><path class="sf0" d="M810.7,294.0 v-168.8 q0,-4 4,-4 h16.0 q4,0 4,4 v168.8 z"/><text class="tick" x="822.7" y="312" text-anchor="middle">12</text><text class="txt2" x="456.0" y="332" text-anchor="middle">cycle</text></svg></figure>
       <div class="quote">"The conveyor belt motor is operating at the commanded duty cycle, but no
         items were counted by the photo-sensor in the latest cycle, suggesting a physical jam.
-        […] ACTION: halt_and_clear"
-        <span class="who">GPT-4o, live · demos/evidence/factory_llm_jam_diagnosis.txt</span></div>
+        [&#8230;] ACTION: halt_and_clear"
+        <span class="who">GPT-4o, live &#183; demos/evidence/factory_llm_jam_diagnosis.txt</span></div>
     </div>
   </section>
 
   <!-- MCP -->
   <section id="mcp">
-    <div class="sec-head"><span class="op">MCP</span><span class="sec-kicker">Agent control plane · host/mcp</span></div>
-    <h2>Any agent gets hands — through the Model Context Protocol</h2>
+    <div class="sec-head"><span class="op">MCP</span><span class="sec-kicker">Agent control plane &#183; host/mcp</span></div>
+    <h2>Any agent gets hands &#8212; through the Model Context Protocol</h2>
     <p class="intro">MILO ships a full MCP stdio server. Point Claude Code, Claude Desktop, or
       Cursor at it and the agent can stand up a fleet, read each device's manifest, write
-      firmware to it in natural language, retask it live, and repair it — all through typed
+      firmware to it in natural language, retask it live, and repair it &#8212; all through typed
       tool calls that pass the same four safety gates. <b>This is the standard way for an LLM
       agent to actuate the physical world at the microcontroller level.</b></p>
     <div class="cols">
@@ -447,68 +447,68 @@ pwm_set(0, command); pwm_set(1, command); pwm_set(2, command); pwm_set(3, comman
            <b>milo_devices</b> returns every manifest.</p></div>
       <div class="card"><span class="op-tag mono">control</span>
         <h3>Program &amp; retask</h3>
-        <p><b>milo_push</b> / <b>milo_push_signed</b> compile Rust → wasm → run;
+        <p><b>milo_push</b> / <b>milo_push_signed</b> compile Rust &#8594; wasm &#8594; run;
            <b>milo_hot_swap</b> replaces running firmware; <b>milo_set_param</b> retasks a
-           device — or a whole fleet — with no recompile.</p></div>
+           device &#8212; or a whole fleet &#8212; with no recompile.</p></div>
     </div>
-    <div class="code"><span class="c"># .mcp.json — Claude Code auto-discovers this at the repo root</span>
+    <div class="code"><span class="c"># .mcp.json &#8212; Claude Code auto-discovers this at the repo root</span>
 { <span class="k">"mcpServers"</span>: { <span class="k">"milo"</span>: {
     <span class="k">"command"</span>: <span class="am">"python3"</span>, <span class="k">"args"</span>: [<span class="am">"-m"</span>, <span class="am">"mcp.server"</span>], <span class="k">"cwd"</span>: <span class="am">"host"</span> } } }
 
 <span class="c"># then, in the agent:</span>
 <span class="am">"Spin up three drones, hover them at 2 m, then move drone-2 to 4 m."</span>
-<span class="c">→ milo_spawn_sim ×3 · milo_push (one controller) · milo_set_param(drone-2, slot=0, 400)</span></div>
+<span class="c">&#8594; milo_spawn_sim &#215;3 &#183; milo_push (one controller) &#183; milo_set_param(drone-2, slot=0, 400)</span></div>
   </section>
 
   <!-- TRUST -->
   <section id="trust">
-    <div class="sec-head"><span class="op">0x0A</span><span class="sec-kicker">Trust model · SECURITY.md</span></div>
+    <div class="sec-head"><span class="op">0x0A</span><span class="sec-kicker">Trust model &#183; SECURITY.md</span></div>
     <h2>The model is creative. The runtime is paranoid.</h2>
     <p class="intro">Nothing the LLM emits is trusted. Every code-loading opcode crosses four
-      independent gates before a single instruction runs on hardware — and out-of-spec
+      independent gates before a single instruction runs on hardware &#8212; and out-of-spec
       peripheral access is denied and logged, never silently ignored.</p>
     <div class="gates">
-      <div class="gate"><div class="n">GATE 1 · bound</div><h4>Frame cap</h4>
+      <div class="gate"><div class="n">GATE 1 &#183; bound</div><h4>Frame cap</h4>
         <p>A payload length is checked against a 512&nbsp;KB ceiling <em>before</em> any buffer is
           allocated. A hostile 4&nbsp;GB length prefix is rejected, not honored.</p></div>
-      <div class="gate"><div class="n">GATE 2 · sign</div><h4>Ed25519 signature</h4>
+      <div class="gate"><div class="n">GATE 2 &#183; sign</div><h4>Ed25519 signature</h4>
         <p>With a trusted key provisioned, only operator-signed modules run.
           <span class="mono">require_signed</span> refuses unsigned pushes outright. Verified on
           RISC-V and ARM, not just the host.</p></div>
-      <div class="gate"><div class="n">GATE 3 · scope</div><h4>Import whitelist</h4>
+      <div class="gate"><div class="n">GATE 3 &#183; scope</div><h4>Import whitelist</h4>
         <p>The module's imports are parsed and checked against the 12-call Alphabet. Anything
-          else — an unknown import, a WASI call — is rejected and never instantiated.</p></div>
-      <div class="gate"><div class="n">GATE 4 · sandbox</div><h4>Sandbox + fuel</h4>
+          else &#8212; an unknown import, a WASI call &#8212; is rejected and never instantiated.</p></div>
+      <div class="gate"><div class="n">GATE 4 &#183; sandbox</div><h4>Sandbox + fuel</h4>
         <p>Execution is capped at 64&nbsp;KB memory / 8&nbsp;KB stack with per-instruction fuel.
           No pointer into firmware; an infinite loop exhausts gas and returns cleanly.</p></div>
     </div>
     <p class="intro" style="margin-top:22px"><b>Capability denial is loud.</b> A syscall aimed at
       a pin the manifest never advertised is a safe no-op that logs
-      <span class="mono">denied: pwm_set 7 not in manifest</span> — visible to the host and the
+      <span class="mono">denied: pwm_set 7 not in manifest</span> &#8212; visible to the host and the
       model, auditable, never silent.</p>
   </section>
 
   <!-- BOARDS -->
   <section id="boards">
-    <div class="sec-head"><span class="op">0x01</span><span class="sec-kicker">Board matrix · docs/PORTING.md</span></div>
-    <h2>One driver corpus, every board — the compounding moat</h2>
+    <div class="sec-head"><span class="op">0x01</span><span class="sec-kicker">Board matrix &#183; docs/PORTING.md</span></div>
+    <h2>One driver corpus, every board &#8212; the compounding moat</h2>
     <p class="intro">The runtime, protocol, validation, signing, and syscall ABI are
       board-agnostic. A new board means implementing <b>one trait and one entry point</b>;
       it then inherits every driver ever written, and every new driver works on it. Board
-      coverage × driver corpus is the product that compounds.</p>
+      coverage &#215; driver corpus is the product that compounds.</p>
     <div class="tscroll">
     <table class="boards">
       <tr><th>Target</th><th>Core</th><th>Transport</th><th>CI artifact</th><th>Status</th></tr>
       <tr><td>ESP32-C3</td><td>RISC-V (no atomics)</td><td>USB Serial-JTAG</td><td>.bin</td><td><span class="pill live">shipping</span></td></tr>
       <tr><td>RP2040 Pico</td><td>Cortex-M0+</td><td>USB CDC</td><td>.uf2</td><td><span class="pill live">shipping</span></td></tr>
-      <tr><td>Virtual fleet</td><td>native + physics</td><td>TCP</td><td>—</td><td><span class="pill emu">emulated</span></td></tr>
+      <tr><td>Virtual fleet</td><td>native + physics</td><td>TCP</td><td>&#8212;</td><td><span class="pill emu">emulated</span></td></tr>
       <tr><td>ESP32-S3 / STM32</td><td>Xtensa / Cortex-M</td><td>USB / UART</td><td>planned</td><td><span class="pill emu">HAL stub</span></td></tr>
     </table>
     </div>
     <div class="honest"><b>What "emulated" means, precisely.</b> Every device in the demos is a
       separate <span class="mono">milo-receiver</span> process running the same Rust runtime,
       wasmi interpreter, syscall ABI, validation, signing, and framing that ship to ESP32-C3 and
-      Pico hardware — only the peripheral layer is simulated, with physics models for thrust,
+      Pico hardware &#8212; only the peripheral layer is simulated, with physics models for thrust,
       heat, and belt motion so the model's code faces consequences. GPT-4o calls are live; the
       generated firmware is committed verbatim under <span class="mono">demos/evidence/</span>.
       Reproduce it all:
@@ -531,16 +531,16 @@ python3 demos/factory_demo.py    <span class="c"># ~55 s</span></div>
 (function(){
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* ── typewriter handshake ── */
+  /* &#9472;&#9472; typewriter handshake &#9472;&#9472; */
   var lines = [
     ['dim','$ '],['','python3 demos/swarm_demo.py\n'],
     ['dim','[t+ 1.8s] '],['ac','compiled flight controller: 943 B in 571 ms\n'],
-    ['dim','[t+ 1.8s] '],['','pushed to 5 drones — echelon takeoff\n'],
-    ['dim','[t+11.4s] '],['','RETASK → 3.0 m · broadcast '],['ac','0.05 ms\n'],
+    ['dim','[t+ 1.8s] '],['','pushed to 5 drones &#8212; echelon takeoff\n'],
+    ['dim','[t+11.4s] '],['','RETASK &#8594; 3.0 m &#183; broadcast '],['ac','0.05 ms\n'],
     ['dim','[t+20.4s] '],['am','FAULT: drone-3 motor 2 at 40% thrust\n'],
-    ['dim','[t+35.9s] '],['ac','GPT-4o wrote PI repair · 975 B\n'],
-    ['dim','[t+35.9s] '],['','HOT-SWAP in flight — no reflash\n'],
-    ['dim','[t+47.9s] '],['ok','✓ recovered · all 5 landed clean\n'],
+    ['dim','[t+35.9s] '],['ac','GPT-4o wrote PI repair &#183; 975 B\n'],
+    ['dim','[t+35.9s] '],['','HOT-SWAP in flight &#8212; no reflash\n'],
+    ['dim','[t+47.9s] '],['ok','&#10003; recovered &#183; all 5 landed clean\n'],
     ['dim','$ '],['cur','']
   ];
   var term = document.getElementById('tterm');
@@ -562,7 +562,7 @@ python3 demos/factory_demo.py    <span class="c"># ~55 s</span></div>
     }
   }
 
-  /* ── ambient oscilloscope trace ── */
+  /* &#9472;&#9472; ambient oscilloscope trace &#9472;&#9472; */
   var cv = document.getElementById('scope');
   if (cv && !reduce) {
     var ctx = cv.getContext('2d'), t0 = performance.now(), raf;
@@ -590,7 +590,7 @@ python3 demos/factory_demo.py    <span class="c"># ~55 s</span></div>
     raf=requestAnimationFrame(frame);
   }
 
-  /* ── chart draw-in on scroll ── */
+  /* &#9472;&#9472; chart draw-in on scroll &#9472;&#9472; */
   var charts = document.querySelectorAll('figure.chart');
   if ('IntersectionObserver' in window && !reduce){
     var io = new IntersectionObserver(function(es){
