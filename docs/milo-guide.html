@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>MILO: Modular Interface for LLM-IoT Operations</title>
+	<style>
+		:root {
+			--bg-primary: #fafaf8;
+			--bg-secondary: #f0eeec;
+			--text-primary: #1a2332;
+			--text-secondary: #475569;
+			--text-muted: #64748b;
+			--accent: #0d7f8c;
+			--accent-light: #0fa9ba;
+			--border: #e2e0dd;
+			--code-bg: #2c3e50;
+			--code-text: #ecf0f1;
+		}
+
+		@media (prefers-color-scheme: dark) {
+			:root {
+				--bg-primary: #0f1419;
+				--bg-secondary: #1a1f2e;
+				--text-primary: #f8f9fa;
+				--text-secondary: #cbd5e1;
+				--text-muted: #94a3b8;
+				--border: #334155;
+				--code-bg: #1a1f2e;
+				--code-text: #e2e8f0;
+			}
+		}
+
+		:root[data-theme="light"] {
+			--bg-primary: #fafaf8;
+			--bg-secondary: #f0eeec;
+			--text-primary: #1a2332;
+			--text-secondary: #475569;
+			--text-muted: #64748b;
+			--border: #e2e0dd;
+			--code-bg: #2c3e50;
+			--code-text: #ecf0f1;
+		}
+
+		:root[data-theme="dark"] {
+			--bg-primary: #0f1419;
+			--bg-secondary: #1a1f2e;
+			--text-primary: #f8f9fa;
+			--text-secondary: #cbd5e1;
+			--text-muted: #94a3b8;
+			--border: #334155;
+			--code-bg: #1a1f2e;
+			--code-text: #e2e8f0;
+		}
+
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+			line-height: 1.6;
+			color: var(--text-primary);
+			background: var(--bg-primary);
+			font-size: 16px;
+		}
+
+		@supports (font-variation-settings: normal) {
+			body {
+				font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			}
+		}
+
+		main {
+			max-width: 800px;
+			margin: 0 auto;
+			padding: 3rem 2rem;
+		}
+
+		h1 {
+			font-size: 2.5rem;
+			font-weight: 700;
+			line-height: 1.2;
+			margin-bottom: 1rem;
+			color: var(--text-primary);
+		}
+
+		.tagline {
+			font-size: 1.25rem;
+			color: var(--accent);
+			font-weight: 500;
+			margin-bottom: 2.5rem;
+			padding-bottom: 1.5rem;
+			border-bottom: 1px solid var(--border);
+		}
+
+		h2 {
+			font-size: 1.75rem;
+			font-weight: 700;
+			margin-top: 3rem;
+			margin-bottom: 1.25rem;
+			color: var(--text-primary);
+			text-wrap: balance;
+		}
+
+		h3 {
+			font-size: 1.25rem;
+			font-weight: 600;
+			margin-top: 2rem;
+			margin-bottom: 1rem;
+			color: var(--text-primary);
+		}
+
+		p {
+			margin-bottom: 1rem;
+			color: var(--text-secondary);
+			max-width: 65ch;
+			line-height: 1.75;
+		}
+
+		p + p {
+			margin-top: 1rem;
+		}
+
+		strong {
+			color: var(--text-primary);
+			font-weight: 600;
+		}
+
+		.section {
+			margin-bottom: 2.5rem;
+		}
+
+		code {
+			font-family: "IBM Plex Mono", "Courier New", monospace;
+			font-size: 0.95em;
+			background: var(--code-bg);
+			color: var(--code-text);
+			padding: 0.25em 0.5em;
+			border-radius: 3px;
+		}
+
+		pre {
+			background: var(--code-bg);
+			color: var(--code-text);
+			padding: 1.5rem;
+			border-radius: 6px;
+			overflow-x: auto;
+			margin: 1.5rem 0;
+			font-size: 0.9rem;
+			line-height: 1.5;
+			font-family: "IBM Plex Mono", "Courier New", monospace;
+		}
+
+		pre code {
+			background: none;
+			color: inherit;
+			padding: 0;
+		}
+
+		ul, ol {
+			margin-left: 1.5rem;
+			margin-bottom: 1rem;
+			color: var(--text-secondary);
+		}
+
+		li {
+			margin-bottom: 0.75rem;
+			line-height: 1.75;
+		}
+
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			margin: 1.5rem 0;
+			font-size: 0.95rem;
+			overflow-x: auto;
+		}
+
+		th, td {
+			text-align: left;
+			padding: 0.75rem 1rem;
+			border-bottom: 1px solid var(--border);
+			color: var(--text-secondary);
+		}
+
+		th {
+			background: var(--bg-secondary);
+			font-weight: 600;
+			color: var(--text-primary);
+		}
+
+		tr:hover {
+			background: var(--bg-secondary);
+		}
+
+		.syscall-grid {
+			display: grid;
+			grid-template-columns: 1fr 2fr 2fr;
+			gap: 1.5rem;
+			margin: 1.5rem 0;
+		}
+
+		@media (max-width: 768px) {
+			.syscall-grid {
+				grid-template-columns: 1fr;
+			}
+		}
+
+		.syscall {
+			padding: 1rem;
+			background: var(--bg-secondary);
+			border-left: 3px solid var(--accent);
+			border-radius: 3px;
+		}
+
+		.syscall-name {
+			font-family: "IBM Plex Mono", monospace;
+			font-weight: 600;
+			color: var(--accent);
+			margin-bottom: 0.5rem;
+			font-size: 0.95rem;
+		}
+
+		.syscall-desc {
+			font-size: 0.9rem;
+			color: var(--text-muted);
+			line-height: 1.5;
+		}
+
+		.architecture {
+			background: var(--bg-secondary);
+			padding: 2rem;
+			border-radius: 6px;
+			border: 1px solid var(--border);
+			margin: 2rem 0;
+			font-family: "IBM Plex Mono", monospace;
+			font-size: 0.85rem;
+			overflow-x: auto;
+			line-height: 1.6;
+			color: var(--text-secondary);
+		}
+
+		.highlight {
+			color: var(--accent);
+			font-weight: 600;
+		}
+
+		.note {
+			padding: 1rem 1.5rem;
+			background: var(--bg-secondary);
+			border-left: 3px solid var(--text-muted);
+			border-radius: 3px;
+			margin: 1.5rem 0;
+			font-size: 0.95rem;
+			color: var(--text-secondary);
+		}
+
+		.note strong {
+			color: var(--text-primary);
+		}
+
+		.flow {
+			display: flex;
+			align-items: center;
+			gap: 0.75rem;
+			margin: 1rem 0;
+			flex-wrap: wrap;
+			font-size: 0.95rem;
+			color: var(--text-secondary);
+		}
+
+		.flow span {
+			display: inline-block;
+			padding: 0.5rem 1rem;
+			background: var(--bg-secondary);
+			border-radius: 3px;
+			font-family: "IBM Plex Mono", monospace;
+			font-weight: 500;
+			color: var(--text-primary);
+		}
+
+		.flow .arrow {
+			color: var(--accent);
+			font-weight: 700;
+		}
+
+		.capabilities-list {
+			display: grid;
+			gap: 1.5rem;
+			margin: 1.5rem 0;
+		}
+
+		.capability {
+			padding: 1.25rem;
+			background: var(--bg-secondary);
+			border-radius: 6px;
+			border: 1px solid var(--border);
+		}
+
+		.capability-name {
+			font-weight: 600;
+			color: var(--text-primary);
+			margin-bottom: 0.5rem;
+			font-size: 1.05rem;
+		}
+
+		.capability-desc {
+			font-size: 0.95rem;
+			color: var(--text-secondary);
+			line-height: 1.6;
+		}
+
+		.status-badge {
+			display: inline-block;
+			padding: 0.25rem 0.75rem;
+			background: var(--bg-secondary);
+			border-radius: 3px;
+			font-size: 0.85rem;
+			font-weight: 600;
+			color: var(--text-muted);
+			margin-left: 0.5rem;
+		}
+
+		.status-badge.done {
+			color: #059669;
+			background: rgba(5, 150, 105, 0.1);
+		}
+
+		.status-badge.partial {
+			color: #d97706;
+			background: rgba(217, 119, 6, 0.1);
+		}
+
+		.status-badge.todo {
+			color: var(--text-muted);
+		}
+
+		a {
+			color: var(--accent);
+			text-decoration: none;
+			border-bottom: 1px solid currentColor;
+			transition: opacity 0.2s;
+		}
+
+		a:hover {
+			opacity: 0.8;
+		}
+
+		.toc {
+			background: var(--bg-secondary);
+			padding: 1.5rem;
+			border-radius: 6px;
+			margin: 2rem 0;
+			border: 1px solid var(--border);
+		}
+
+		.toc h3 {
+			margin-top: 0;
+			font-size: 1rem;
+			text-transform: uppercase;
+			letter-spacing: 0.05em;
+			color: var(--text-muted);
+			margin-bottom: 1rem;
+		}
+
+		.toc ul {
+			list-style: none;
+			margin: 0;
+		}
+
+		.toc li {
+			margin-bottom: 0.5rem;
+		}
+
+		.toc a {
+			color: var(--accent);
+		}
+
+		@media (max-width: 640px) {
+			h1 {
+				font-size: 1.875rem;
+			}
+
+			h2 {
+				font-size: 1.5rem;
+			}
+
+			main {
+				padding: 2rem 1.5rem;
+			}
+
+			.architecture {
+				padding: 1rem;
+				font-size: 0.8rem;
+			}
+		}
+
+		:focus {
+			outline: 2px solid var(--accent);
+			outline-offset: 2px;
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			* {
+				animation-duration: 0.01ms !important;
+				animation-iteration-count: 1 !important;
+				transition-duration: 0.01ms !important;
+			}
+		}
+	</style>
+</head>
+<body>
+	<main>
+		<h1>MILO</h1>
+		<p class="tagline">Modular Interface for LLM-IoT Operations — Turn natural language into embedded firmware in seconds.</p>
+
+		<div class="toc">
+			<h3>Contents</h3>
+			<ul>
+				<li><a href="#what-is-milo">What Is MILO?</a></li>
+				<li><a href="#how-it-works">How It Works</a></li>
+				<li><a href="#architecture">Architecture</a></li>
+				<li><a href="#syscalls">The Atomic Alphabet: 12 Syscalls</a></li>
+				<li><a href="#boards">Supported Hardware</a></li>
+				<li><a href="#protocol">MILO-Link Protocol</a></li>
+				<li><a href="#project-structure">Project Structure</a></li>
+				<li><a href="#getting-started">Getting Started</a></li>
+				<li><a href="#development">Development Status</a></li>
+			</ul>
+		</div>
+
+		<section class="section" id="what-is-milo">
+			<h2>What Is MILO?</h2>
+			<p><strong>MILO is an ultra-lightweight hardware abstraction layer that turns microcontrollers into a programmable extension of an LLM's reasoning engine.</strong> You describe what you want in natural language, the LLM writes Rust firmware, it compiles to WebAssembly, and the device executes it—often in seconds.</p>
+
+			<p>It bridges three worlds:</p>
+			<ul>
+				<li><strong>Natural language:</strong> You ask for a feature in plain English.</li>
+				<li><strong>Rust + WebAssembly:</strong> An LLM (like GPT-4o) generates firmware code compiled to a tiny, sandboxed wasm binary.</li>
+				<li><strong>Embedded hardware:</strong> The wasm runs on the target device (ESP32-C3 or Raspberry Pi Pico) with direct access to GPIO, I2C, ADC, PWM, and more through a minimal syscall interface.</li>
+			</ul>
+
+			<p>The result: a feedback loop where LLMs can prototype, test, and refine hardware interactions without a C compiler toolchain or low-level debugging on every iteration.</p>
+
+			<h3>Why MILO exists</h3>
+			<p>Traditional embedded development is slow. You write C, compile for the target, flash it over JTAG, hope it works, and debug over serial. MILO eliminates most of that friction by treating the device as a wasm runtime that can be updated over USB serial in seconds. The LLM becomes your firmware engineer, and the feedback loop collapses from hours to seconds.</p>
+		</section>
+
+		<section class="section" id="how-it-works">
+			<h2>How It Works</h2>
+
+			<h3>The Flow</h3>
+			<div class="flow">
+				<span>You</span>
+				<span class="arrow">→</span>
+				<span>LLM</span>
+				<span class="arrow">→</span>
+				<span>Rust code</span>
+				<span class="arrow">→</span>
+				<span>wasm</span>
+				<span class="arrow">→</span>
+				<span>Device</span>
+				<span class="arrow">→</span>
+				<span>Result</span>
+			</div>
+
+			<p>In more detail:</p>
+
+			<ol>
+				<li>You type a task: <code>blink the onboard LED three times</code></li>
+				<li>The host sends your prompt + device manifest to GPT-4o</li>
+				<li>GPT-4o generates a Rust function that calls syscalls like <code>gpio_set()</code> and <code>delay_ms()</code></li>
+				<li>The host compiles the Rust to WebAssembly (memory-constrained to 64 KB, 8 KB stack)</li>
+				<li>The wasm binary is pushed over USB serial (1.2 KB for a simple blink, typically)</li>
+				<li>The device's wasm runtime (wasmi, sandboxed) executes it with fuel metering ("gas") to prevent infinite loops</li>
+				<li>Results and logs stream back over the same serial port</li>
+				<li>If compilation fails, the host feeds the compiler error back to the LLM and retries (up to 2 times); device-side execution errors are reported to you but not auto-retried</li>
+			</ol>
+
+			<h3>Key insight: Wasm as the assembly language</h3>
+			<p>By compiling to wasm instead of raw machine code, MILO gains:</p>
+			<ul>
+				<li><strong>Portability:</strong> Same wasm binary runs on any MILO receiver (ESP32, Pico, future targets).</li>
+				<li><strong>Safety:</strong> The wasm sandbox prevents memory corruption, buffer overflows, and wild pointer dereferences.</li>
+				<li><strong>Gas metering:</strong> CPU execution can be bounded with fuel limits to prevent runaway code.</li>
+				<li><strong>Easy transport:</strong> A 1–2 KB binary is trivial to push over serial.</li>
+			</ul>
+		</section>
+
+		<section class="section" id="architecture">
+			<h2>Architecture</h2>
+
+			<p>MILO has two main parts: a <strong>Host</strong> (Python, on your laptop) and a <strong>Receiver</strong> (Rust firmware, on the device).</p>
+
+			<div class="architecture">Host (Python)                    Receiver (Rust — ESP32-C3 or RP2040)
+┌──────────────────────┐        ┌──────────────────────────────────┐
+│ Natural language     │        │ MiloRuntime + board HAL          │
+│ → GPT-4o             │        │ ├─ wasmi (sandboxed wasm)        │
+│ → Rust → wasm        │        │ ├─ syscall bindings + fuel ("gas")
+│ → serial             │ ◄────► │ ├─ GPIO, PWM, ADC, I2C, SPI, UART
+│ (+ Wi-Fi WIP)        │ MILO   │ └─ EmbeddedHalAdapter           │
+│ milo init / download │ Link   │ Transport: USB serial, USB CDC   │
+│ milo flash           │ frames │                                  │
+└──────────────────────┘        └──────────────────────────────────┘
+			</div>
+
+			<h3>Host components</h3>
+
+			<div class="capabilities-list">
+				<div class="capability">
+					<div class="capability-name">CLI (cli.py)</div>
+					<div class="capability-desc">Entry point. Manages device discovery, serial port selection, subprocess mode (laptop-only testing), and the main LLM loop where you type tasks.</div>
+				</div>
+				<div class="capability">
+					<div class="capability-name">Compiler (compiler.py)</div>
+					<div class="capability-desc">Orchestrates Rust→wasm compilation. Wraps the LLM's function body in a <code>#![no_std]</code> crate and builds it with <code>cargo</code> (target <code>wasm32-unknown-unknown</code>, <code>opt-level = "z"</code>), capturing compiler errors for the retry loop.</div>
+				</div>
+				<div class="capability">
+					<div class="capability-name">Transport (transport.py)</div>
+					<div class="capability-desc">Abstraction over serial and TCP. Implements MILO-Link framing: sending wasm bytecode, reading responses, handling discovery handshakes.</div>
+				</div>
+				<div class="capability">
+					<div class="capability-name">Device Management (devices/)</div>
+					<div class="capability-desc">USB discovery, board identification (VID/PID map), multi-device registry for parallel operations.</div>
+				</div>
+				<div class="capability">
+					<div class="capability-name">Flash/Init (flash/)</div>
+					<div class="capability-desc">Auto-detect blank boards, download firmware from GitHub releases, and flash with <code>espflash</code> or picotool.</div>
+				</div>
+			</div>
+
+			<h3>Receiver components</h3>
+
+			<div class="capabilities-list">
+				<div class="capability">
+					<div class="capability-name">MiloRuntime (lib.rs)</div>
+					<div class="capability-desc">Glues together wasmi, the linker, and the host state. Registers all syscalls, validates imports, executes wasm, captures logs.</div>
+				</div>
+				<div class="capability">
+					<div class="capability-name">Executor (engine/executor.rs)</div>
+					<div class="capability-desc">State machine for wasm execution. Tracks idle/running/completed/stopped states; submits bytecode; polls for results.</div>
+				</div>
+				<div class="capability">
+					<div class="capability-name">Hardware Abstraction (hal/adapter.rs)</div>
+					<div class="capability-desc"><code>EmbeddedHalAdapter</code>: generic wrapper over any board's GPIO, PWM, ADC, I2C. Syscalls call methods on this adapter.</div>
+				</div>
+				<div class="capability">
+					<div class="capability-name">Board Implementations (targets/)</div>
+					<div class="capability-desc">Concrete <code>Esp32C3Hal</code> and <code>Rp2040Hal</code> implementing the hardware traits. Board-specific pin mapping, clocking, and peripheral setup.</div>
+				</div>
+				<div class="capability">
+					<div class="capability-name">Transport (transport/)</div>
+					<div class="capability-desc">USB serial (ESP32) or USB CDC (Pico). Reads frames, dispatches opcodes, writes results back.</div>
+				</div>
+			</div>
+
+			<h3>Main loop (receiver)</h3>
+			<p>The receiver runs an event loop that:</p>
+			<ol>
+				<li>Waits for a <strong>discovery</strong> request (host says "who are you?")</li>
+				<li>Responds with a JSON hardware manifest (GPIO pins, ADC channels, I2C buses, etc.)</li>
+				<li>Waits for a <strong>bytecode push</strong> (the compiled wasm binary)</li>
+				<li>Validates wasm imports (whitelist: only syscalls allowed)</li>
+				<li>Executes it, capturing logs and gas usage</li>
+				<li>Sends back a JSON result: success, logs, any trapped errors</li>
+				<li>Repeats</li>
+			</ol>
+
+			<p>On the ESP32-C3 this is the shared <code>main_loop</code> in <code>lib.rs</code>, which also handles the extended control opcodes (stop, query status, set parameters, hot-swap). The Pico currently runs its own reduced USB-CDC loop that dispatches only discovery and bytecode push — extended opcodes are not yet wired there (see Known Gaps).</p>
+		</section>
+
+		<section class="section" id="syscalls">
+			<h2>The Atomic Alphabet: 12 Syscalls</h2>
+
+			<p>Every wasm driver communicates with hardware through exactly these functions, imported from module <code>env</code>:</p>
+
+			<table>
+				<thead>
+					<tr>
+						<th>Syscall</th>
+						<th>Signature</th>
+						<th>Purpose</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td><code>gpio_set</code></td>
+						<td><code>(pin: u32, state: u32)</code></td>
+						<td>Set GPIO pin HIGH (1) or LOW (0)</td>
+					</tr>
+					<tr>
+						<td><code>gpio_get</code></td>
+						<td><code>(pin: u32) → u32</code></td>
+						<td>Read GPIO pin state</td>
+					</tr>
+					<tr>
+						<td><code>delay_ms</code></td>
+						<td><code>(ms: u32)</code></td>
+						<td>Blocking delay in milliseconds</td>
+					</tr>
+					<tr>
+						<td><code>get_uptime_us</code></td>
+						<td><code>() → u64</code></td>
+						<td>Microseconds since boot</td>
+					</tr>
+					<tr>
+						<td><code>i2c_transfer</code></td>
+						<td><code>(addr, tx_ptr, tx_len, rx_ptr, rx_len) → i32</code></td>
+						<td>I2C read/write</td>
+					</tr>
+					<tr>
+						<td><code>pwm_set</code></td>
+						<td><code>(channel: u32, duty: u32)</code></td>
+						<td>Set PWM duty (0–10000 = 0–100%)</td>
+					</tr>
+					<tr>
+						<td><code>adc_read</code></td>
+						<td><code>(channel: u32) → u32</code></td>
+						<td>Read ADC (resolution in manifest)</td>
+					</tr>
+					<tr>
+						<td><code>spi_transfer</code></td>
+						<td><code>(bus, tx_ptr, tx_len, rx_ptr, rx_len) → i32</code></td>
+						<td>SPI read/write</td>
+					</tr>
+					<tr>
+						<td><code>uart_write</code></td>
+						<td><code>(bus: u32, ptr: u32, len: u32) → i32</code></td>
+						<td>Write to UART bus</td>
+					</tr>
+					<tr>
+						<td><code>uart_read</code></td>
+						<td><code>(bus, ptr, len, timeout_ms) → i32</code></td>
+						<td>Read from UART bus</td>
+					</tr>
+					<tr>
+						<td><code>log_msg</code></td>
+						<td><code>(ptr: u32, len: u32)</code></td>
+						<td>Log a UTF-8 message</td>
+					</tr>
+					<tr>
+						<td><code>get_param</code></td>
+						<td><code>(slot: u32) → u32</code></td>
+						<td>Read host-writable parameter slot (0–7)</td>
+					</tr>
+				</tbody>
+			</table>
+
+			<p>That's it. No <code>malloc</code>, no <code>printf</code>, no OS calls. Just these 12 primitives. Everything else (I2C to a sensor, PWM to an LED, UART to a module) is built on top of them.</p>
+
+			<h3>Example: blinking an LED</h3>
+			<pre><code>#[unsafe(no_mangle)]
+pub extern "C" fn run_logic() {
+    for _ in 0..3 {
+        unsafe {
+            gpio_set(25, 1);           // LED on
+            delay_ms(500);
+            gpio_set(25, 0);           // LED off
+            delay_ms(500);
+        }
+    }
+}</code></pre>
+
+			<h3>Example: reading an ADC and displaying on SSD1306 OLED</h3>
+			<p>More complex, but still using the same primitives: initialize the OLED over I2C with a command sequence, set the cursor, send bitmap font glyphs for the digit, and update on a loop.</p>
+
+			<p class="note"><strong>Key constraint:</strong> Wasm memory is 64 KB with an 8 KB stack. The host's system prompt teaches the LLM how to clear the SSD1306 efficiently (8 pages, 128 columns), render numbers without <code>alloc</code>, and avoid large stack allocations.</p>
+		</section>
+
+		<section class="section" id="boards">
+			<h2>Supported Hardware</h2>
+
+			<h3>ESP32-C3</h3>
+			<ul>
+				<li><strong>Processor:</strong> 32-bit RISC-V, no native atomics (hence the wasmi patches)</li>
+				<li><strong>Transport:</strong> USB Serial JTAG</li>
+				<li><strong>GPIO:</strong> Flexible I/O</li>
+				<li><strong>PWM:</strong> LEDC peripheral (10-bit, configurable frequency)</li>
+				<li><strong>ADC:</strong> 12-bit</li>
+				<li><strong>I2C:</strong> Standard I2C @ up to 400 kHz</li>
+				<li><strong>Reference build:</strong> External LED (330 Ω) on GPIO 5, potentiometer on ADC channel 0 (GPIO 2), SSD1306 OLED on I2C @ 0x3C (SDA GPIO 8, SCL GPIO 9)</li>
+			</ul>
+
+			<h3>Raspberry Pi Pico (RP2040)</h3>
+			<ul>
+				<li><strong>Processor:</strong> Dual-core ARM Cortex-M0+ (today MILO uses single-core)</li>
+				<li><strong>Transport:</strong> USB CDC (virtual serial port)</li>
+				<li><strong>GPIO:</strong> 26 I/O pins</li>
+				<li><strong>PWM:</strong> 16 channels</li>
+				<li><strong>ADC:</strong> 12-bit, 4-channel</li>
+				<li><strong>I2C:</strong> 2 buses with optional recovery</li>
+				<li><strong>Reference build:</strong> Onboard LED on GPIO 25, potentiometer on GPIO 26 (exposed as ADC channel <code>26</code> in the manifest), SSD1306 OLED on I2C0 @ 0x3C (SDA GPIO 4, SCL GPIO 5)</li>
+			</ul>
+
+			<h3>Future boards</h3>
+			<p>Adding a new board requires:</p>
+			<ul>
+				<li>A Rust HAL crate (e.g., <code>stm32h7xx-hal</code>)</li>
+				<li>An implementation of the <code>MiloHardware</code> trait</li>
+				<li>A Cargo feature (e.g., <code>--features stm32h7</code>)</li>
+				<li>Update to the manifest builder</li>
+			</ul>
+			<p>The receiver's transport layer and wasm runtime are board-agnostic; only the HAL changes.</p>
+		</section>
+
+		<section class="section" id="protocol">
+			<h2>MILO-Link Protocol</h2>
+
+			<p>Binary framing over any byte stream (USB serial, TCP, stdin/stdout):</p>
+
+			<pre><code>[opcode: u8][payload_len: u32 big-endian][payload: bytes]</code></pre>
+
+			<table>
+				<thead>
+					<tr>
+						<th>Opcode</th>
+						<th>Direction</th>
+						<th>Purpose</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td><code>0x01</code></td>
+						<td>Bidirectional</td>
+						<td>Discovery — JSON hardware manifest</td>
+					</tr>
+					<tr>
+						<td><code>0x02</code></td>
+						<td>Host → Device</td>
+						<td>Bytecode push — raw wasm binary</td>
+					</tr>
+					<tr>
+						<td><code>0x03</code></td>
+						<td>Device → Host</td>
+						<td>Execution result — JSON (success, logs, errors)</td>
+					</tr>
+					<tr>
+						<td><code>0x04–0x09</code></td>
+						<td>(Extended)</td>
+						<td>Streaming, stop, query status, set parameter, hot-swap</td>
+					</tr>
+				</tbody>
+			</table>
+
+			<h3>Example handshake</h3>
+			<ol>
+				<li><strong>Host sends discovery:</strong> <code>[0x01][0x00 0x00 0x00 0x00]</code> (opcode + empty payload)</li>
+				<li><strong>Device responds:</strong> <code>[0x01][0x00 0x00 0x01 0x42][{ JSON manifest }]</code></li>
+				<li><strong>Host sends bytecode:</strong> <code>[0x02][payload_len in BE][wasm bytes...]</code></li>
+				<li><strong>Device executes, responds with result:</strong> <code>[0x03][len][{ "ok": true, "logs": [...] }]</code></li>
+			</ol>
+
+			<h3>Hardware manifest</h3>
+			<p>A JSON document (sent during discovery) describing what the device has:</p>
+
+			<pre><code>{
+  "board": "esp32c3",
+  "family": "esp32",
+  "firmware_version": "0.1.0",
+  "capabilities": {
+    "gpio": { "pins": [5] },
+    "pwm":  { "pins": [5], "resolution_bits": 10 },
+    "adc":  { "pins": [0], "resolution_bits": 12, "vref_mv": 3300 },
+    "i2c": [
+      { "bus_id": 0, "sda_pin": 8, "scl_pin": 9, "devices_present": ["0x3c"] }
+    ]
+  },
+  "memory": { "ram_kb": 400, "flash_kb": 4096 },
+  "wasm_limits": { "max_memory_kb": 64, "max_stack_kb": 8, "fuel_default": 500000000 },
+  "alphabet": ["gpio_set", "gpio_get", "delay_ms", "...", "get_param"]
+}</code></pre>
+
+			<p>The LLM's system prompt includes this manifest, so it can pick valid pins and verify the device actually has the peripheral before generating code.</p>
+		</section>
+
+		<section class="section" id="project-structure">
+			<h2>Project Structure</h2>
+
+			<pre><code>MILO/
+├── receiver/                    # Rust firmware (embedded target)
+│   ├── src/
+│   │   ├── main.rs              # Entry points (esp32c3, rp2040, std)
+│   │   ├── lib.rs               # MiloRuntime, syscalls, main_loop
+│   │   ├── engine/              # Executor, link protocol, validation
+│   │   ├── transport/           # USB serial, USB CDC, TCP stub
+│   │   ├── hal/                 # Hardware abstraction
+│   │   └── targets/             # Board-specific HAL (esp32c3, rp2040, mock)
+│   ├── tests/                   # Integration tests (std)
+│   ├── ld/rp2040/memory.x       # Pico RAM layout
+│   └── Cargo.toml
+│
+├── host/                        # Python host application
+│   ├── cli.py                   # Main entry point (LLM loop)
+│   ├── core/
+│   │   ├── compiler.py          # Rust → Wasm JIT compiler
+│   │   └── transport.py         # Serial/TCP/subprocess frame I/O
+│   ├── devices/                 # USB discovery, board registry
+│   ├── flash/                   # Firmware download & init
+│   ├── mcp/                     # MCP agent integration
+│   ├── hil/                     # Hardware-in-the-loop tests
+│   ├── tools/                   # Standalone utilities (serial_push)
+│   └── tests/
+│
+├── prompts/
+│   └── system_prompt.txt        # LLM instructions (capability-aware, memory-safe)
+│
+├── scripts/                     # Release manifest generator
+├── examples/test_drivers/       # Example Wasm drivers (blink, ADC, UART, …)
+├── patches/                     # wasmi forks (no atomics for ESP32)
+├── docs/                        # Weekly development docs
+│   ├── week1/                   # Core runtime + ESP32-C3
+│   ├── week2/                   # Board abstraction + E2E testing
+│   └── week3/                   # Pico port + WiFi stub + MCP scaffold
+└── LICENSE                      # Apache 2.0</code></pre>
+
+			<h3>Key files to understand the codebase</h3>
+
+			<ul>
+				<li><strong>receiver/src/lib.rs:</strong> Start here. Contains <code>main_loop</code>, syscall registration, and the runtime loop.</li>
+				<li><strong>receiver/src/engine/executor.rs:</strong> The state machine for wasm execution. How does a wasm binary get loaded and run?</li>
+				<li><strong>receiver/src/engine/link.rs:</strong> Frame format, opcodes, serialization.</li>
+				<li><strong>host/cli.py:</strong> The interactive LLM loop. How does the host communicate with the device and call the LLM?</li>
+				<li><strong>host/core/transport.py:</strong> Frame I/O and serial/TCP abstraction.</li>
+				<li><strong>prompts/system_prompt.txt:</strong> The system prompt fed to the LLM. It teaches GPT-4o about the syscalls, memory constraints, and OLED rendering.</li>
+			</ul>
+		</section>
+
+		<section class="section" id="getting-started">
+			<h2>Getting Started</h2>
+
+			<h3>Prerequisites</h3>
+
+			<p>You need:</p>
+			<ul>
+				<li><strong>Rust:</strong> nightly + stable with targets <code>wasm32-unknown-unknown</code>, <code>riscv32imc-unknown-none-elf</code> (ESP32), <code>thumbv6m-none-eabi</code> (Pico)</li>
+				<li><strong>Python 3.10+:</strong> with <code>openai</code>, <code>pyserial</code>, <code>esptool</code></li>
+				<li><strong>espflash</strong> or <strong>picotool</strong> for flashing</li>
+				<li><strong>OpenAI API key:</strong> in <code>OPENAI_API_KEY</code> env var</li>
+			</ul>
+
+			<h3>Flash a device</h3>
+
+			<p>Download a prebuilt firmware binary (no compilation needed):</p>
+
+			<pre><code>cd host
+python3 cli.py init --port /dev/cu.usbmodem3101 -y</code></pre>
+
+			<p>Or build from source:</p>
+
+			<pre><code>cd receiver
+cargo +nightly build --release \
+  --target riscv32imc-unknown-none-elf \
+  --features esp32c3 --no-default-features
+
+espflash flash --port /dev/cu.usbmodem3101 \
+  target/riscv32imc-unknown-none-elf/release/milo-receiver</code></pre>
+
+			<h3>Run the host</h3>
+
+			<pre><code>cd host
+export OPENAI_API_KEY="sk-..."
+python3 cli.py</code></pre>
+
+			<p>Then type a task:</p>
+
+			<pre><code>you → blink the onboard LED three times
+you → read the potentiometer and show the value on the OLED
+you → fade the LED brightness up and down using PWM</code></pre>
+
+			<h3>Laptop-only testing</h3>
+
+			<p>No hardware? Build and run the mock receiver:</p>
+
+			<pre><code>cd receiver
+cargo build
+cargo run -- ../examples/test_drivers/blink_led/target/wasm32-unknown-unknown/release/blink_led.wasm
+
+cd ../host
+python3 cli.py --subprocess "../receiver/target/debug/milo-receiver --stdin"</code></pre>
+
+			<p class="note"><strong>Note:</strong> the example driver wasm files are build artifacts — run <code>cargo build --release --target wasm32-unknown-unknown</code> inside each <code>examples/test_drivers/*</code> crate first (the receiver's integration tests need them too). The std receiver defaults to 10M fuel; override with <code>--fuel N</code>.</p>
+		</section>
+
+		<section class="section" id="development">
+			<h2>Development Status</h2>
+
+			<h3>Phases completed</h3>
+
+			<table>
+				<thead>
+					<tr>
+						<th>Phase</th>
+						<th>Theme</th>
+						<th>Status</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>1</td>
+						<td>Transport abstraction</td>
+						<td><span class="status-badge done">Done</span> USB serial on both boards, pluggable transport trait</td>
+					</tr>
+					<tr>
+						<td>2</td>
+						<td>Raspberry Pi Pico port</td>
+						<td><span class="status-badge done">Done</span> Full RP2040 support, same host, USB CDC</td>
+					</tr>
+					<tr>
+						<td>3</td>
+						<td>WiFi transport</td>
+						<td><span class="status-badge partial">Partial</span> Host TCP client + mDNS; receiver TCP stub (not production)</td>
+					</tr>
+					<tr>
+						<td>4</td>
+						<td>Extended protocol & dual-core</td>
+						<td><span class="status-badge partial">Partial</span> Extended opcodes on ESP32; Pico single-core; Core 1 spawn not wired</td>
+					</tr>
+					<tr>
+						<td>5</td>
+						<td>Multi-device, MCP, safety</td>
+						<td><span class="status-badge partial">Partial</span> Registry + MCP scaffold + import validation; parallel push not implemented</td>
+					</tr>
+				</tbody>
+			</table>
+
+			<h3>What's working today</h3>
+
+			<ul>
+				<li><strong>ESP32-C3:</strong> Full syscall alphabet, gas metering, import validation, parameter slots, hot-swap</li>
+				<li><strong>Raspberry Pi Pico:</strong> Blink, ADC read, I2C (OLED), GPIO input, PWM</li>
+				<li><strong>LLM loop:</strong> Iterative prompt → compile → push → execute, with retry on failure</li>
+				<li><strong>Device discovery:</strong> USB VID/PID identification, board registry</li>
+				<li><strong>Firmware provisioning:</strong> Download and flash from GitHub releases</li>
+			</ul>
+
+			<h3>Known gaps</h3>
+
+			<ul>
+				<li><strong>WiFi:</strong> TCP transport on receiver is stubbed; no production mDNS or WiFi initialization</li>
+				<li><strong>Dual-core (Pico):</strong> Core 1 is not used; both transport and Wasm run on Core 0</li>
+				<li><strong>Parallel multi-device push:</strong> Registry supports <code>push_to_all</code> but it's sequential, not <code>asyncio.gather</code></li>
+				<li><strong>Extended opcodes (Pico):</strong> Discovery and bytecode push work; stop/query/set-param/hot-swap not dispatched on the USB loop</li>
+				<li><strong>Peripheral whitelist:</strong> Manifest lists available pins, but the device doesn't reject out-of-spec syscalls; relies on HAL returning -1</li>
+			</ul>
+
+			<h3>On the horizon</h3>
+
+			<p>The project's weekly docs (in <code>docs/week3/</code>) track a 5-phase roadmap. Future work includes finishing WiFi (real TCP + mDNS server on device), wiring Core 1 for parallel execution, and building an MCP agent that can orchestrate multi-device scenarios.</p>
+		</section>
+
+		<section class="section">
+			<h2>License</h2>
+			<p>MILO is released under the <a href="https://www.apache.org/licenses/LICENSE-2.0">Apache License 2.0</a>.</p>
+		</section>
+	</main>
+</body>
+</html>

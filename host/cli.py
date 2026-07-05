@@ -36,6 +36,7 @@ from flash import init_cmd
 from core.transport import (
     MiloTransport,
     SerialTransport,
+    SubprocessTransport,
     TcpTransport,
     OP_DISCOVERY,
     OP_BYTECODE_PUSH,
@@ -85,7 +86,7 @@ def _detect_port() -> str | None:
 
 
 def _maybe_autoflash(port: str | None, enabled: bool) -> None:
-    """Run `milo init --yes` on startup if we see a blank board of a known family.
+    """Run `milo init` on startup if we see a blank board of a known family.
 
     Only runs when there is at least one candidate blank device and `--port` is
     not pinned to an already-MILO device.
@@ -120,6 +121,11 @@ def _maybe_autoflash(port: str | None, enabled: bool) -> None:
 
 def _open_transport(args: argparse.Namespace) -> MiloTransport | None:
     """Open the appropriate transport based on CLI flags."""
+    subprocess_cmd = getattr(args, "subprocess", None)
+    if subprocess_cmd:
+        print(f"  Spawning receiver subprocess: {subprocess_cmd}")
+        return SubprocessTransport(subprocess_cmd)
+
     transport_type = getattr(args, "transport", "serial")
 
     if transport_type == "wifi":
@@ -153,7 +159,10 @@ def _open_transport(args: argparse.Namespace) -> MiloTransport | None:
 def cmd_run(args: argparse.Namespace) -> int:
     from core.compiler import compile_rust_to_wasm
 
-    _maybe_autoflash(args.port, enabled=not args.no_autoflash)
+    _maybe_autoflash(
+        args.port,
+        enabled=not args.no_autoflash and not getattr(args, "subprocess", None),
+    )
 
     transport = _open_transport(args)
     if transport is None:
@@ -291,6 +300,9 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> argparse.Argument
     p.add_argument("--ip", help="Device IP address (for --transport wifi)")
     p.add_argument("--tcp-port", type=int, default=9100, help="TCP port (default: 9100)")
     p.add_argument("--no-autoflash", action="store_true", help="Skip startup board detection / flashing")
+    p.add_argument("--subprocess", metavar="CMD",
+                   help='Talk to a local receiver process instead of hardware, '
+                        'e.g. --subprocess "../receiver/target/debug/milo-receiver --stdin"')
     p.set_defaults(func=cmd_run)
     return p
 

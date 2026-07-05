@@ -1,5 +1,21 @@
 # LIAL — Complete Project Walkthrough
 
+> **⚠️ Historical document — predates the LIAL→MILO rename.** Concepts and
+> architecture are still accurate, but identifiers are not. When reading,
+> map old names to current ones:
+>
+> | This document says | Current codebase |
+> |---|---|
+> | LIAL, `LialRuntime`, `LialHardware` | MILO, `MiloRuntime`, `MiloHardware` |
+> | `lial_gpio_set`, `lial_adc_read`, … (`lial_*` syscalls) | unprefixed: `gpio_set`, `adc_read`, … |
+> | `lial_log` | `log_msg` |
+> | `transport.rs`, `transport_wifi.rs` | `transport/mod.rs`, `transport/wifi.rs` |
+> | `embedded_hal_adapter.rs` | `hal/adapter.rs` |
+>
+> The "u64 multi-value return hack" caveat for `get_uptime_us` is obsolete —
+> the current runtime returns `u64` directly via wasmi. For current docs see
+> `README.md` and `docs/milo-guide.html`.
+
 A file-by-file, function-by-function guide to the entire LIAL codebase. Written for deep understanding — every file is explained, with caveats and gaps called out explicitly.
 
 **Last updated:** Week 3 (post PR #5 + #6 merge)

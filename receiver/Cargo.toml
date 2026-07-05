@@ -8,7 +8,7 @@ default = ["std"]
 std = ["wasmi/std", "serde_json/std"]
 esp32c3 = ["dep:esp-hal", "dep:esp-alloc", "dep:portable-atomic", "dep:esp-bootloader-esp-idf", "dep:nb"]
 esp32c3-wifi = ["esp32c3", "dep:esp-wifi", "dep:smoltcp"]
-rp2040 = ["dep:rp2040-hal", "dep:rp2040-boot2", "dep:cortex-m", "dep:cortex-m-rt", "dep:embedded-alloc", "dep:usb-device", "dep:usbd-serial", "dep:portable-atomic", "dep:embedded-hal-0-2"]
+rp2040 = ["dep:rp2040-hal", "dep:rp2040-boot2", "dep:cortex-m", "dep:cortex-m-rt", "dep:embedded-alloc", "dep:usb-device", "dep:usbd-serial", "dep:portable-atomic", "portable-atomic/critical-section", "dep:embedded-hal-0-2"]
 
 [dependencies]
 wasmi = { version = "1.0.9", default-features = false }
@@ -18,7 +18,10 @@ embedded-hal-nb = "1.0"
 embedded-io = "0.6"
 esp-hal = { version = "1.0.0", features = ["esp32c3", "unstable"], optional = true }
 esp-alloc = { version = "0.7", optional = true }
-portable-atomic = { version = "1", optional = true, default-features = false, features = ["critical-section"] }
+# `critical-section` must NOT be enabled for esp32c3: esp-hal turns on
+# portable-atomic's `unsafe-assume-single-core`, and the two are mutually
+# exclusive. The rp2040 feature adds it (impl comes from rp2040-hal).
+portable-atomic = { version = "1", optional = true, default-features = false }
 nb = { version = "1", optional = true }
 esp-bootloader-esp-idf = { version = "0.4", features = ["esp32c3"], optional = true }
 esp-wifi = { version = "0.15", optional = true, default-features = false, features = ["esp32c3", "wifi"] }

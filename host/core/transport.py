@@ -166,3 +166,64 @@ class TcpTransport(MiloTransport):
     @property
     def is_connected(self) -> bool:
         return self._connected
+
+
+class SubprocessTransport(MiloTransport):
+    """MILO-Link over a child process's stdin/stdout.
+
+    Used for laptop-only testing against the std receiver:
+        python3 cli.py --subprocess "../receiver/target/debug/milo-receiver --stdin"
+    """
+
+    def __init__(self, command: str):
+        import shlex
+        import subprocess
+
+        self._proc = subprocess.Popen(
+            shlex.split(command),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+        )
+
+    def _read_exact(self, n: int, deadline: float) -> bytes:
+        import select
+
+        fd = self._proc.stdout.fileno()
+        buf = b""
+        while len(buf) < n:
+            left = deadline - time.time()
+            if left <= 0:
+                raise TimeoutError(f"subprocess read timeout ({len(buf)}/{n} bytes)")
+            ready, _, _ = select.select([fd], [], [], left)
+            if not ready:
+                continue
+            chunk = self._proc.stdout.read1(n - len(buf))
+            if not chunk:
+                raise ConnectionError("subprocess closed stdout")
+            buf += chunk
+        return buf
+
+    def read_frame(self, timeout: float = 30.0) -> tuple[int, bytes]:
+        deadline = time.time() + timeout
+        header = self._read_exact(5, deadline)
+        opcode = header[0]
+        plen = struct.unpack(">I", header[1:5])[0]
+        payload = self._read_exact(plen, deadline) if plen > 0 else b""
+        return opcode, payload
+
+    def write_frame(self, opcode: int, payload: bytes = b"") -> None:
+        frame = struct.pack(">BI", opcode, len(payload)) + payload
+        self._proc.stdin.write(frame)
+        self._proc.stdin.flush()
+
+    def close(self) -> None:
+        if self._proc.poll() is None:
+            self._proc.stdin.close()
+            try:
+                self._proc.wait(timeout=3)
+            except Exception:
+                self._proc.kill()
+
+    @property
+    def is_connected(self) -> bool:
+        return self._proc.poll() is None

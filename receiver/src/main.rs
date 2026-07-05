@@ -105,7 +105,7 @@ mod esp_entry {
             },
             pwm: PwmCapability {
                 pins: alloc::vec![5],
-                resolution_bits: 14,
+                resolution_bits: 10,
             },
             adc: AdcCapability {
                 pins: alloc::vec![0],
@@ -366,6 +366,30 @@ mod pico_entry {
                     continue;
                 }
 
+                // Same import whitelist as the shared main_loop: reject
+                // modules that ask for anything outside the MILO Alphabet.
+                let v = milo_receiver::engine::validation::validate_wasm_imports(&frame.payload);
+                if !v.valid {
+                    let mut names = alloc::string::String::new();
+                    for (i, name) in v.rejected_imports.iter().enumerate() {
+                        if i > 0 {
+                            names.push_str(", ");
+                        }
+                        names.push_str(name);
+                    }
+                    let err = Frame::new(
+                        OP_EXEC_RESULT,
+                        alloc::format!(
+                            r#"{{"ok":false,"error":"rejected imports: {}"}}"#,
+                            milo_receiver::json_escape(&names)
+                        )
+                        .into_bytes(),
+                    );
+                    let bytes = err.serialize();
+                    usb_write_all(&mut serial, &mut usb_dev, &bytes);
+                    continue;
+                }
+
                 // Register USB poll callback so delays keep USB alive
                 struct UsbCtx {
                     serial: *mut SerialPort<'static, rp2040_hal::usb::UsbBus>,
@@ -386,24 +410,19 @@ mod pico_entry {
                 }
 
                 let mut runtime = MiloRuntime::new(hal, Some(500_000_000));
-                let result_json = match runtime.execute(&frame.payload, "run_logic") {
-                    Ok(logs) => {
-                        let mut s = alloc::string::String::from(r#"{"ok":true,"logs":["#);
-                        for (i, log) in logs.iter().enumerate() {
-                            if i > 0 {
-                                s.push(',');
-                            }
-                            s.push('"');
-                            s.push_str(log);
-                            s.push('"');
-                        }
-                        s.push_str("]}");
-                        s
-                    }
-                    Err(e) => {
-                        alloc::format!(r#"{{"ok":false,"error":"{}"}}"#, e)
-                    }
+                let exec_result = match runtime.execute(&frame.payload, "run_logic") {
+                    Ok(logs) => milo_receiver::engine::executor::ExecResult {
+                        ok: true,
+                        logs,
+                        error: None,
+                    },
+                    Err(e) => milo_receiver::engine::executor::ExecResult {
+                        ok: false,
+                        logs: alloc::vec::Vec::new(),
+                        error: Some(alloc::format!("{}", e)),
+                    },
                 };
+                let result_json = milo_receiver::exec_result_to_json(&exec_result);
 
                 rp2040::clear_usb_poll();
                 hal = runtime.into_hardware();
@@ -463,7 +482,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = std::env::args().collect();
 
-    let mut fuel: Option<u64> = None;
+    // Default matches the fuel_default advertised in the manifest above;
+    // override with --fuel N.
+    let mut fuel: Option<u64> = Some(10_000_000);
     let mut wasm_path: Option<String> = None;
     let mut stdin_mode = false;
     let mut i = 1;
@@ -509,6 +530,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let err_json = format!(
                     r#"{{"error":"unexpected opcode 0x{:02x}, expected 0x01 or 0x02"}}"#,
                     frame.opcode
+                );
+                let resp = Frame::new(OP_EXEC_RESULT, err_json.into_bytes());
+                let _ = transport.write_frame(&resp);
+                continue;
+            }
+
+            let v = milo_receiver::engine::validation::validate_wasm_imports(&frame.payload);
+            if !v.valid {
+                let err_json = format!(
+                    r#"{{"ok":false,"error":"rejected imports: {}"}}"#,
+                    milo_receiver::json_escape(&v.rejected_imports.join(", "))
                 );
                 let resp = Frame::new(OP_EXEC_RESULT, err_json.into_bytes());
                 let _ = transport.write_frame(&resp);
