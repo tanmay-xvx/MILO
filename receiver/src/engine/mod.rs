@@ -8,3 +8,5 @@ pub mod executor_dual;
 
 #[cfg(feature = "std")]
 pub mod executor_threaded;
+
+pub mod signing;

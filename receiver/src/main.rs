@@ -122,8 +122,47 @@ mod esp_entry {
         };
         let manifest_json = build_manifest(&header, &caps);
 
+        // ── Security policy ───────────────────────────────────────────
+        // Bake a trusted Ed25519 key in at build time to lock the device to
+        // signed firmware: MILO_TRUSTED_KEY=<64 hex> cargo build ...
+        let policy = match option_env!("MILO_TRUSTED_KEY") {
+            Some(hex) => match parse_hex_key_const(hex) {
+                Some(key) => milo_receiver::SecurityPolicy::signed_only(key),
+                None => milo_receiver::SecurityPolicy::open(),
+            },
+            None => milo_receiver::SecurityPolicy::open(),
+        };
+
         // ── Main loop (transport-agnostic) ────────────────────────────
-        milo_receiver::main_loop(&mut transport, hal, &manifest_json);
+        let exec =
+            milo_receiver::engine::executor::SingleCoreExecutor::new(hal, Some(500_000_000));
+        milo_receiver::main_loop_with_policy(&mut transport, exec, &manifest_json, policy);
+    }
+
+    /// Parse 64 compile-time hex chars into a 32-byte key (no_std-friendly).
+    fn parse_hex_key_const(hex: &str) -> Option<[u8; 32]> {
+        let bytes = hex.as_bytes();
+        if bytes.len() != 64 {
+            return None;
+        }
+        let mut key = [0u8; 32];
+        let mut i = 0;
+        while i < 32 {
+            let hi = hex_nibble(bytes[i * 2])?;
+            let lo = hex_nibble(bytes[i * 2 + 1])?;
+            key[i] = (hi << 4) | lo;
+            i += 1;
+        }
+        Some(key)
+    }
+
+    fn hex_nibble(c: u8) -> Option<u8> {
+        match c {
+            b'0'..=b'9' => Some(c - b'0'),
+            b'a'..=b'f' => Some(c - b'a' + 10),
+            b'A'..=b'F' => Some(c - b'A' + 10),
+            _ => None,
+        }
     }
 }
 
@@ -336,6 +375,11 @@ mod pico_entry {
                     frame_buf[4],
                 ]) as usize;
 
+                if plen > milo_receiver::engine::link::MAX_FRAME_LEN {
+                    // Oversized frame: resynchronize by clearing the buffer.
+                    frame_buf.clear();
+                    break;
+                }
                 if frame_buf.len() < 5 + plen {
                     break;
                 }
@@ -433,6 +477,20 @@ mod pico_entry {
             }
         }
     }
+}
+
+/// Parse 64 hex chars into a 32-byte Ed25519 public key.
+#[cfg(feature = "std")]
+fn parse_hex_key(hex: &str) -> Option<[u8; 32]> {
+    let hex = hex.trim();
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut key = [0u8; 32];
+    for (i, b) in key.iter_mut().enumerate() {
+        *b = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(key)
 }
 
 // ── Laptop (std) entry point ──────────────────────────────────────────
@@ -544,9 +602,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(sim_stop_hook),
             Some(sim_start_hook),
         );
+
+        // Security policy from the environment. MILO_TRUSTED_KEY is 64 hex
+        // chars (32-byte Ed25519 public key); MILO_REQUIRE_SIGNED=1 refuses
+        // unsigned modules. Absent → open bench policy.
+        let policy = match std::env::var("MILO_TRUSTED_KEY").ok() {
+            Some(hex) => {
+                let key = parse_hex_key(&hex).expect("MILO_TRUSTED_KEY must be 64 hex chars");
+                let require = std::env::var("MILO_REQUIRE_SIGNED").as_deref() == Ok("1");
+                if require {
+                    milo_receiver::SecurityPolicy::signed_only(key)
+                } else {
+                    milo_receiver::SecurityPolicy {
+                        trusted_key: Some(key),
+                        require_signed: false,
+                    }
+                }
+            }
+            None => milo_receiver::SecurityPolicy::open(),
+        };
+
         let mut transport = TcpServerTransport::bind(port)?;
-        eprintln!("[{name}] sim receiver ({profile_str}) listening on 127.0.0.1:{port}");
-        milo_receiver::main_loop_with_executor(&mut transport, exec, &manifest);
+        let sec = if policy.require_signed {
+            " [signed-only]"
+        } else if policy.trusted_key.is_some() {
+            " [signing enabled]"
+        } else {
+            ""
+        };
+        eprintln!("[{name}] sim receiver ({profile_str}) listening on 127.0.0.1:{port}{sec}");
+        milo_receiver::main_loop_with_policy(&mut transport, exec, &manifest, policy);
     }
 
     if stdin_mode {

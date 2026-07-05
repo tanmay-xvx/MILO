@@ -146,6 +146,12 @@ impl TcpServerTransport {
             return None;
         }
         let len = u32::from_be_bytes([self.buf[1], self.buf[2], self.buf[3], self.buf[4]]) as usize;
+        if len > crate::engine::link::MAX_FRAME_LEN {
+            // Oversized frame: drop the connection rather than buffer it.
+            self.client = None;
+            self.buf.clear();
+            return None;
+        }
         if self.buf.len() < 5 + len {
             return None;
         }
