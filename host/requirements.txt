@@ -3,3 +3,4 @@ anthropic
 pyserial
 esptool
 pyusb
+cryptography
