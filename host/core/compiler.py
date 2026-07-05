@@ -51,6 +51,11 @@ lto = true
 CARGO_CONFIG = """\
 [target.wasm32-unknown-unknown]
 rustflags = [
+    # The syscalls (log_msg, gpio_set, …) are host imports, deliberately
+    # undefined in the module. Some rust-lld versions reject undefined
+    # symbols by default, so allow them explicitly — they become wasm
+    # imports from "env", exactly what the receiver links.
+    "-C", "link-arg=--allow-undefined",
     "-C", "link-arg=--initial-memory=65536",
     "-C", "link-arg=--max-memory=65536",
     "-C", "link-arg=-z",

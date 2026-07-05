@@ -50,8 +50,8 @@ jobs:
         with:
           workspaces: receiver
 
-      - name: Install system deps (libudev for espflash)
-        if: matrix.family == 'esp32'
+      - name: Install system deps (libudev for espflash / elf2uf2-rs)
+        if: matrix.family == 'esp32' || matrix.family == 'rp2040'
         run: sudo apt-get update && sudo apt-get install -y libudev-dev pkg-config
 
       - name: Install stable toolchain (for host tools like espflash)
