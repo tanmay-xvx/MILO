@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" role="img">
+  <style>
+    .bg { fill: #fcfcfb; }
+    .txt { fill: #0b0b0b; font: 600 15px -apple-system, 'Segoe UI', sans-serif; }
+    .txt2 { fill: #52514e; font: 12px -apple-system, 'Segoe UI', sans-serif; }
+    .txtm { fill: #7a7a74; font: 11px -apple-system, 'Segoe UI', sans-serif; }
+    .tick { fill: #52514e; font: 11px -apple-system, 'Segoe UI', sans-serif;
+            font-variant-numeric: tabular-nums; }
+    .grid { stroke: #ececea; stroke-width: 1; }
+    .evt { stroke: #9b9a94; stroke-width: 1; stroke-dasharray: 3 3; }
+    .serious { stroke: #c62f2e; }
+    .serious-txt { fill: #c62f2e; font: 600 11px -apple-system, sans-serif; }
+    .ring { stroke: #fcfcfb; stroke-width: 2; }
+    .s0 { stroke: #2a78d6; } .sf0 { fill: #2a78d6; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #1a1a19; }
+      .txt { fill: #ffffff; }
+      .txt2 { fill: #c3c2b7; }
+      .txtm { fill: #93928c; }
+      .tick { fill: #c3c2b7; }
+      .grid { stroke: #2c2c2a; }
+      .evt { stroke: #6b6a64; }
+      .serious { stroke: #e66767; }
+      .serious-txt { fill: #e66767; }
+      .ring { stroke: #1a1a19; }
+      .s0 { stroke: #3987e5; } .sf0 { fill: #3987e5; }
+    }
+  </style>
+<rect class="bg" x="0" y="0" width="880" height="400" rx="8"/><text class="txt" x="56" y="30">Oven chamber temperature — heater drift caught and corrected</text><text class="txt2" x="56" y="50">Open-loop vendor firmware overheats after the element drifts; GPT-4o writes closed-loop firmware, pushed mid-production</text><line class="grid" x1="56" y1="354.0" x2="856" y2="354.0"/><text class="tick" x="48" y="358.0" text-anchor="end">0</text><line class="grid" x1="56" y1="285.0" x2="856" y2="285.0"/><text class="tick" x="48" y="289.0" text-anchor="end">50</text><line class="grid" x1="56" y1="216.0" x2="856" y2="216.0"/><text class="tick" x="48" y="220.0" text-anchor="end">100</text><line class="grid" x1="56" y1="147.0" x2="856" y2="147.0"/><text class="tick" x="48" y="151.0" text-anchor="end">150</text><line class="grid" x1="56" y1="78.0" x2="856" y2="78.0"/><text class="tick" x="48" y="82.0" text-anchor="end">200</text><text class="txt2" transform="rotate(-90 16 216)" x="16" y="216" text-anchor="middle">temperature (°C)</text><text class="tick" x="56.0" y="372" text-anchor="middle">0s</text><text class="tick" x="212.0" y="372" text-anchor="middle">10s</text><text class="tick" x="368.1" y="372" text-anchor="middle">20s</text><text class="tick" x="524.1" y="372" text-anchor="middle">30s</text><text class="tick" x="680.1" y="372" text-anchor="middle">40s</text><text class="tick" x="836.1" y="372" text-anchor="middle">50s</text><line class="serious" x1="56" y1="126.3" x2="856" y2="126.3" stroke-width="1.5" stroke-dasharray="6 4"/><text class="serious-txt" x="852" y="120.3" text-anchor="end">▲ alarm limit 165 °C</text><line class="evt" x1="263.0" y1="72" x2="263.0" y2="354"/><text class="txtm" x="267.0" y="80">element drifts +35%</text><line class="evt" x1="470.8" y1="72" x2="470.8" y2="354"/><text class="txtm" x="474.8" y="80">LLM firmware replaces open-loop</text><polyline points="61.7,319.5 68.0,308.1 74.4,297.3 80.8,287.2 87.2,277.8 93.6,269.0 100.0,260.8 106.4,253.2 112.0,246.8 118.4,240.2 124.8,233.9 131.1,228.1 137.4,222.7 143.8,217.6 150.2,212.9 156.6,208.5 162.1,204.9 168.4,201.1 174.7,197.5 181.0,194.1 187.4,190.9 193.8,188.0 200.2,185.2 206.6,182.6 212.7,180.4 219.1,178.1 225.4,176.0 231.8,174.1 238.2,172.2 244.5,170.6 250.9,169.0 257.3,167.5 263.0,164.7 269.3,159.4 275.7,154.5 282.1,150.0 288.5,145.7 294.9,141.7 301.2,138.1 307.6,134.6 313.1,131.8 319.5,128.7 325.9,125.9 332.3,123.3 338.7,120.8 345.1,118.5 351.4,116.4 357.8,114.3 467.6,111.1 474.0,114.2 480.3,117.5 486.7,121.0 493.1,124.7 499.5,128.3 505.9,132.0 512.2,135.6 518.1,138.8 524.5,139.8 530.9,140.7 537.3,141.7 543.6,142.7 550.0,143.7 556.4,144.7 562.8,145.6 568.8,146.4 575.2,146.8 581.6,147.1 588.0,147.5 594.4,147.8 600.8,148.0 607.2,148.3 613.5,148.4 618.9,148.6 625.3,148.8 631.7,149.0 638.1,149.1 644.4,149.2 650.8,149.2 657.2,149.3 663.5,149.3 761.2,149.2 767.6,149.4 773.9,149.5 780.3,149.6 786.7,149.6 793.1,149.6 799.4,149.6 805.8,149.5 811.4,149.5 817.8,149.6 824.1,149.7 830.6,149.7 836.9,149.8 843.3,149.7 849.6,149.7 856.0,149.6" fill="none" class="s0" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" /><circle class="sf0 ring" cx="856.0" cy="149.6" r="4"/><text class="txt2" x="850.0" y="139.6" text-anchor="end">holds 148 °C despite drifted heater</text></svg>

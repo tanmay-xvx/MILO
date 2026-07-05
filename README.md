@@ -173,6 +173,30 @@ for d in examples/mock_driver examples/test_drivers/*/; do
 done
 ```
 
+### Virtual fleet & flagship demos (no hardware needed)
+
+The std receiver can emulate whole device fleets: `--listen <port>` serves
+MILO-Link over TCP with a simulated hardware profile (`drone`, `conveyor`,
+`oven`, `arm`) whose peripherals *react* — motors produce thrust, heaters heat,
+belts move items. Same runtime, syscalls, validation and fuel metering as the
+hardware build; only the peripheral backend is simulated.
+
+```bash
+cd receiver && cargo build && cd ..
+
+python3 demos/swarm_demo.py     # 5-drone swarm: parallel push, mid-flight retask,
+                                # motor fault, LLM-written repair hot-swapped in flight
+python3 demos/factory_demo.py   # 3-machine cell: overheat caught → GPT-4o writes
+                                # closed-loop firmware; jam cleared by the arm
+```
+
+Both write measurable evidence (telemetry, transcripts, LLM-generated firmware,
+metrics) to `demos/evidence/`; see `docs/blog/evidence.md` for the numbers.
+With `OPENAI_API_KEY` set the corrective firmware is written live by GPT-4o;
+without it, scripted fallbacks keep the runs reproducible. Emulated devices use
+a non-blocking executor, so they answer stop / status / set-param / hot-swap
+*while a driver is running* — the contract dual-core boards provide on silicon.
+
 ### Run tests
 
 ```bash

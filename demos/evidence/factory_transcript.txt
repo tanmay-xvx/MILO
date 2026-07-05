@@ -1,0 +1,29 @@
+[t+   0.00s] MILO factory demo — 3 emulated machines, LLM=live (gpt-4o)
+[t+   1.12s] compiled 4 baseline drivers in 1120 ms (1224/963/529/1267 bytes)
+[t+   1.49s] cell online: conveyor-1 (sim-conveyor), oven-1 (sim-oven), arm-1 (sim-arm)
+[t+   4.72s] cycle  1: belt items=4 motor=35.9°C | oven 25.0→73.0°C [open-loop (vendor firmware)]
+[t+   7.92s] cycle  2: belt items=4 motor=43.2°C | oven 77.6→105.4°C [open-loop (vendor firmware)]
+[t+  11.17s] cycle  3: belt items=4 motor=48.1°C | oven 108.0→124.1°C [open-loop (vendor firmware)]
+[t+  14.39s] cycle  4: belt items=4 motor=51.4°C | oven 125.8→135.1°C [open-loop (vendor firmware)]
+[t+  14.39s] ‼ INCIDENT A (unannounced to the controller): oven heater element drifts +35%
+[t+  17.61s] cycle  5: belt items=4 motor=53.6°C | oven 137.1→158.9°C [open-loop (vendor firmware)]
+[t+  20.83s] cycle  6: belt items=4 motor=55.0°C | oven 161.0→173.6°C [open-loop (vendor firmware)]
+[t+  20.83s] ⚠ ALARM: oven peaked at 173.6°C (limit 165°C) — consulting LLM supervisor
+[t+  22.81s] LLM diagnosis: The reflow oven is consistently exceeding its 165°C alarm limit, indicating a failure in maintaining the desired temperature under the current open-loop control. The fixed-duty cycle of 6000 is not compensating for the heat accumulation, leading to a progressive temperature increase across cycles. ACTION: halt_and_clear.
+[t+  27.51s] ↻ FIRMWARE REPLACED: oven now runs closed-loop (llm-written) firmware (835 bytes, generated in 4691 ms) — production continues
+[t+  30.74s] cycle  7: belt items=4 motor=56.1°C | oven 175.9→158.2°C [closed-loop (llm-written)]
+[t+  33.99s] cycle  8: belt items=4 motor=56.7°C | oven 155.9→151.0°C [closed-loop (llm-written)]
+[t+  37.20s] cycle  9: belt items=4 motor=57.1°C | oven 150.4→148.9°C [closed-loop (llm-written)]
+[t+  37.20s] ‼ INCIDENT B (unannounced to the controller): item jams the conveyor
+[t+  40.45s] cycle 10: belt items=0 motor=57.4°C | oven 148.8→148.3°C [closed-loop (llm-written)]
+[t+  40.45s] ⚠ ALARM: belt powered but zero items past the sensor — consulting LLM supervisor
+[t+  42.18s] LLM diagnosis: The telemetry indicates that the conveyor belt motor is operating at the commanded duty cycle, but no items were counted by the photo-sensor in the latest cycle, suggesting a physical jam on the conveyor belt. The motor temperature has slightly increased, which could be a result of the motor working against the jam.   ACTION: halt_and_clear
+[t+  42.18s] → halting belt
+[t+  42.18s] → dispatching arm-1 to clear the obstruction
+[t+  46.32s]    arm report: ['arm: clear sweep start', 'REACHED_END=1', 'HOME=1', 'arm: clear sweep complete']
+[t+  46.32s] ✓ RECOVERED: belt restored after 4.1 s — resuming production
+[t+  49.54s] cycle 11: belt items=4 motor=56.3°C | oven 148.3→148.1°C [closed-loop (llm-written)]
+[t+  52.78s] cycle 12: belt items=4 motor=56.8°C | oven 148.2→148.1°C [closed-loop (llm-written)]
+[t+  52.78s] shift complete: 44 items processed; oven peaked at 175.9°C during the incident and finished at 148.1°C under closed-loop (llm-written) firmware
+[t+  52.78s] metrics: {"oven_fix_gen_ms": 4691, "oven_fix_mode": "llm", "jam_recovery_s": 4.1, "total_items": 44, "throughput_healthy_avg": 4.0, "throughput_after_jam_avg": 4.0, "oven_final_c": 148.1, "oven_peak_c": 175.9}
+[t+  52.78s] evidence written to demos/evidence/ (telemetry, events, transcript, LLM firmware + diagnoses)
