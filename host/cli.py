@@ -308,16 +308,19 @@ def _add_run_parser(subparsers: argparse._SubParsersAction) -> argparse.Argument
 
 
 def main(argv: list[str] | None = None) -> int:
+    from core import keygen_cmd
+
     parser = argparse.ArgumentParser(description="MILO Host")
     subparsers = parser.add_subparsers(dest="subcommand")
     _add_run_parser(subparsers)
     download_cmd.add_parser(subparsers)
     init_cmd.add_parser(subparsers)
+    keygen_cmd.add_parser(subparsers)
 
     # Treat `cli.py` with no subcommand (or only flags) as `run` for
     # backward compat with pre-subcommand invocation.
     argv_list = list(sys.argv[1:] if argv is None else argv)
-    known_subs = {"run", "download", "init"}
+    known_subs = {"run", "download", "init", "keygen"}
     top_level_help = {"-h", "--help"}
     if not argv_list or (
         argv_list[0] not in known_subs and argv_list[0] not in top_level_help

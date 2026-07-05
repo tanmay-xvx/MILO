@@ -22,17 +22,18 @@ jobs:
             features: esp32c3
             artifact_ext: bin
             rust_toolchain: nightly
+          - variant: rp2040
+            family: rp2040
+            target: thumbv6m-none-eabi
+            features: rp2040
+            artifact_ext: uf2
+            rust_toolchain: nightly
           # Future boards (added as their HAL adapters land):
           # - variant: esp32s3
           #   family: esp32
           #   target: xtensa-esp32s3-none-elf
           #   features: esp32s3
           #   artifact_ext: bin
-          # - variant: rp2040
-          #   family: rp2040
-          #   target: thumbv6m-none-eabi
-          #   features: rp2040
-          #   artifact_ext: uf2
 
     steps:
       - uses: actions/checkout@v4
@@ -49,8 +50,8 @@ jobs:
         with:
           workspaces: receiver
 
-      - name: Install system deps (libudev for espflash)
-        if: matrix.family == 'esp32'
+      - name: Install system deps (libudev for espflash / elf2uf2-rs)
+        if: matrix.family == 'esp32' || matrix.family == 'rp2040'
         run: sudo apt-get update && sudo apt-get install -y libudev-dev pkg-config
 
       - name: Install stable toolchain (for host tools like espflash)
@@ -114,10 +115,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install Rust + wasm target (for compile / fleet / signing tests)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build std receiver (enables fleet / MCP / signing e2e tests)
+        working-directory: receiver
+        run: cargo build
       - name: Install host deps
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pyserial
+          pip install pytest pyserial cryptography
       - name: Run tests
         working-directory: host
         run: python -m pytest tests/ -v

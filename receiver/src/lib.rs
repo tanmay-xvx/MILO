@@ -82,6 +82,36 @@ pub struct MiloRuntime<H: MiloHardware> {
     linker: Linker<HostState<H>>,
 }
 
+/// Fleet security policy applied to every code-loading opcode.
+#[derive(Clone, Copy)]
+pub struct SecurityPolicy {
+    /// If set, the trusted Ed25519 verifying key; unsigned pushes are
+    /// rejected when `require_signed` is true.
+    pub trusted_key: Option<[u8; engine::signing::PUBKEY_LEN]>,
+    /// When true, plain `OP_BYTECODE_PUSH` / `OP_HOT_SWAP` (unsigned) are
+    /// refused — only signature-verified modules run.
+    pub require_signed: bool,
+}
+
+impl SecurityPolicy {
+    /// Permissive default: accept unsigned modules (still import-validated and
+    /// sandboxed). Suitable for development and the open bench.
+    pub const fn open() -> Self {
+        Self {
+            trusted_key: None,
+            require_signed: false,
+        }
+    }
+
+    /// Locked-down: only modules signed by `key` are accepted.
+    pub const fn signed_only(key: [u8; engine::signing::PUBKEY_LEN]) -> Self {
+        Self {
+            trusted_key: Some(key),
+            require_signed: true,
+        }
+    }
+}
+
 /// Shared main loop: reads frames from transport, dispatches opcodes, executes
 /// Wasm, and writes results back. Used by all board entry points.
 pub fn main_loop<T: transport::MiloTransport, H: MiloHardware + 'static>(
@@ -90,7 +120,39 @@ pub fn main_loop<T: transport::MiloTransport, H: MiloHardware + 'static>(
     manifest_json: &str,
 ) -> ! {
     let exec = engine::executor::SingleCoreExecutor::new(hal, Some(500_000_000));
-    main_loop_with_executor(transport, exec, manifest_json)
+    main_loop_with_policy(transport, exec, manifest_json, SecurityPolicy::open())
+}
+
+/// Resolve a push/swap payload to validated wasm bytes under the policy, or an
+/// error-JSON string ready to send back. Signature (if required) → import
+/// whitelist → caller instantiates. `signed` selects the wire format.
+fn authorize_module(
+    payload: &[u8],
+    signed: bool,
+    policy: &SecurityPolicy,
+) -> Result<Vec<u8>, String> {
+    let wasm: &[u8] = if signed {
+        let key = policy
+            .trusted_key
+            .as_ref()
+            .ok_or_else(|| String::from(r#"{"ok":false,"error":"no trusted key provisioned"}"#))?;
+        engine::signing::verify_signed(payload, key).map_err(|e| {
+            format!(r#"{{"ok":false,"error":"signature rejected: {}"}}"#, e)
+        })?
+    } else {
+        if policy.require_signed {
+            return Err(String::from(
+                r#"{"ok":false,"error":"unsigned module rejected: policy requires signed bytecode"}"#,
+            ));
+        }
+        payload
+    };
+
+    let v = engine::validation::validate_wasm_imports(wasm);
+    if !v.valid {
+        return Err(rejected_imports_json(&v.rejected_imports));
+    }
+    Ok(wasm.to_vec())
 }
 
 /// Main loop over any executor strategy. With a blocking executor
@@ -100,8 +162,17 @@ pub fn main_loop<T: transport::MiloTransport, H: MiloHardware + 'static>(
 /// EXEC_RESULT once `poll_result` yields it.
 pub fn main_loop_with_executor<T: transport::MiloTransport, E: engine::executor::MiloExecutor>(
     transport: &mut T,
+    exec: E,
+    manifest_json: &str,
+) -> ! {
+    main_loop_with_policy(transport, exec, manifest_json, SecurityPolicy::open())
+}
+
+pub fn main_loop_with_policy<T: transport::MiloTransport, E: engine::executor::MiloExecutor>(
+    transport: &mut T,
     mut exec: E,
     manifest_json: &str,
+    policy: SecurityPolicy,
 ) -> ! {
     use engine::executor::ExecStatus;
 
@@ -128,18 +199,26 @@ pub fn main_loop_with_executor<T: transport::MiloTransport, E: engine::executor:
                 let _ = transport.write_frame(&discovery);
             }
 
-            engine::link::OP_BYTECODE_PUSH => {
-                let v = engine::validation::validate_wasm_imports(&frame.payload);
-                if !v.valid {
-                    let err_msg = rejected_imports_json(&v.rejected_imports);
-                    let resp = engine::link::Frame::new(engine::link::OP_EXEC_RESULT, err_msg.into_bytes());
-                    let _ = transport.write_frame(&resp);
-                } else {
-                    exec.submit(&frame.payload);
-                    if let Some(result) = exec.poll_result() {
-                        let json = exec_result_to_json(&result);
-                        let resp = engine::link::Frame::new(engine::link::OP_EXEC_RESULT, json.into_bytes());
+            op @ (engine::link::OP_BYTECODE_PUSH | engine::link::OP_SIGNED_PUSH) => {
+                let signed = op == engine::link::OP_SIGNED_PUSH;
+                match authorize_module(&frame.payload, signed, &policy) {
+                    Err(err_msg) => {
+                        let resp = engine::link::Frame::new(
+                            engine::link::OP_EXEC_RESULT,
+                            err_msg.into_bytes(),
+                        );
                         let _ = transport.write_frame(&resp);
+                    }
+                    Ok(wasm) => {
+                        exec.submit(&wasm);
+                        if let Some(result) = exec.poll_result() {
+                            let json = exec_result_to_json(&result);
+                            let resp = engine::link::Frame::new(
+                                engine::link::OP_EXEC_RESULT,
+                                json.into_bytes(),
+                            );
+                            let _ = transport.write_frame(&resp);
+                        }
                     }
                 }
             }
@@ -187,19 +266,27 @@ pub fn main_loop_with_executor<T: transport::MiloTransport, E: engine::executor:
                 }
             }
 
-            engine::link::OP_HOT_SWAP => {
-                let v = engine::validation::validate_wasm_imports(&frame.payload);
-                if !v.valid {
-                    let err_msg = rejected_imports_json(&v.rejected_imports);
-                    let resp = engine::link::Frame::new(engine::link::OP_EXEC_RESULT, err_msg.into_bytes());
-                    let _ = transport.write_frame(&resp);
-                } else {
-                    exec.stop();
-                    exec.submit(&frame.payload);
-                    if let Some(result) = exec.poll_result() {
-                        let json = exec_result_to_json(&result);
-                        let resp = engine::link::Frame::new(engine::link::OP_EXEC_RESULT, json.into_bytes());
+            op @ (engine::link::OP_HOT_SWAP | engine::link::OP_SIGNED_SWAP) => {
+                let signed = op == engine::link::OP_SIGNED_SWAP;
+                match authorize_module(&frame.payload, signed, &policy) {
+                    Err(err_msg) => {
+                        let resp = engine::link::Frame::new(
+                            engine::link::OP_EXEC_RESULT,
+                            err_msg.into_bytes(),
+                        );
                         let _ = transport.write_frame(&resp);
+                    }
+                    Ok(wasm) => {
+                        exec.stop();
+                        exec.submit(&wasm);
+                        if let Some(result) = exec.poll_result() {
+                            let json = exec_result_to_json(&result);
+                            let resp = engine::link::Frame::new(
+                                engine::link::OP_EXEC_RESULT,
+                                json.into_bytes(),
+                            );
+                            let _ = transport.write_frame(&resp);
+                        }
                     }
                 }
             }

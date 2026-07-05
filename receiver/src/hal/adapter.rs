@@ -188,18 +188,41 @@ impl<'d> EmbeddedHalAdapter<'d> {
     }
 }
 
+impl<'d> EmbeddedHalAdapter<'d> {
+    /// Audit-log a syscall against a peripheral id the manifest never
+    /// advertised. The operation stays a safe no-op, but the denial is
+    /// visible in the device logs (and therefore in the host's result
+    /// frame) instead of failing silently.
+    fn deny(&mut self, syscall: &str, id: u32) {
+        let msg = alloc::format!("denied: {syscall} {id} not in manifest");
+        (self.log_sink)(&msg);
+        self.last_log = Some(msg);
+    }
+}
+
 impl<'d> MiloHardware for EmbeddedHalAdapter<'d> {
     fn gpio_set(&mut self, pin: u32, state: u32) {
         if let Some(p) = self.pins.get_mut(&pin) {
             p.set(state != 0);
+        } else {
+            self.deny("gpio_set", pin);
         }
     }
 
     fn gpio_get(&mut self, pin: u32) -> u32 {
-        self.pins
-            .get_mut(&pin)
-            .map(|p| if p.get() { 1u32 } else { 0u32 })
-            .unwrap_or(0)
+        match self.pins.get_mut(&pin) {
+            Some(p) => {
+                if p.get() {
+                    1
+                } else {
+                    0
+                }
+            }
+            None => {
+                self.deny("gpio_get", pin);
+                0
+            }
+        }
     }
 
     fn delay_ms(&mut self, ms: u32) {
@@ -227,14 +250,19 @@ impl<'d> MiloHardware for EmbeddedHalAdapter<'d> {
     fn pwm_set(&mut self, channel: u32, duty_0_10000: u32) {
         if let Some(pwm) = self.pwm_channels.get_mut(&channel) {
             pwm.set_duty(duty_0_10000);
+        } else {
+            self.deny("pwm_set", channel);
         }
     }
 
     fn adc_read(&mut self, channel: u32) -> u32 {
-        self.adc_channels
-            .get_mut(&channel)
-            .map(|a| a.read())
-            .unwrap_or(0)
+        match self.adc_channels.get_mut(&channel) {
+            Some(a) => a.read(),
+            None => {
+                self.deny("adc_read", channel);
+                0
+            }
+        }
     }
 
     fn spi_transfer(&mut self, bus: u32, tx: &[u8], rx: &mut [u8]) -> i32 {
@@ -540,8 +568,32 @@ mod tests {
         a.gpio_set(5, 0);
         a.gpio_set(5, 1);
 
-        // Unregistered pin is a no-op (silent).
+        // Unregistered pin is a no-op (safe), but not silent.
         a.gpio_set(99, 1);
+    }
+
+    #[test]
+    fn unregistered_syscall_is_denied_and_logged() {
+        let mut a = EmbeddedHalAdapter::builder()
+            .pin(5, Box::new(MockPin::new()))
+            .delay(Box::new(MockDelay { total_ms: 0 }))
+            .uptime_fn(fake_uptime)
+            .log_sink(fake_log)
+            .build();
+
+        // Pin 5 is registered; pin 99 and PWM/ADC channel 7 are not.
+        a.gpio_set(99, 1);
+        assert_eq!(a.last_log.as_deref(), Some("denied: gpio_set 99 not in manifest"));
+
+        a.pwm_set(7, 5000);
+        assert_eq!(a.last_log.as_deref(), Some("denied: pwm_set 7 not in manifest"));
+
+        assert_eq!(a.adc_read(7), 0);
+        assert_eq!(a.last_log.as_deref(), Some("denied: adc_read 7 not in manifest"));
+
+        // A registered pin does not log a denial.
+        a.gpio_set(5, 1);
+        assert_eq!(a.last_log.as_deref(), Some("denied: adc_read 7 not in manifest"));
     }
 
     #[test]

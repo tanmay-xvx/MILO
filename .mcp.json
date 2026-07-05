@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "milo": {
+      "command": "python3",
+      "args": ["-m", "mcp.server"],
+      "cwd": "host",
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
