@@ -18,6 +18,11 @@ OP_QUERY_STATUS = 0x06
 OP_STATUS_RESPONSE = 0x07
 OP_SET_PARAM = 0x08
 OP_HOT_SWAP = 0x09
+OP_SIGNED_PUSH = 0x0A
+OP_SIGNED_SWAP = 0x0B
+
+# Must match receiver/src/engine/link.rs MAX_FRAME_LEN.
+MAX_FRAME_LEN = 512 * 1024
 
 
 class MiloTransport(ABC):

@@ -18,6 +18,15 @@ pub const OP_QUERY_STATUS: u8 = 0x06;
 pub const OP_STATUS_RESPONSE: u8 = 0x07;
 pub const OP_SET_PARAM: u8 = 0x08;
 pub const OP_HOT_SWAP: u8 = 0x09;
+/// Payload = [64-byte Ed25519 signature over the wasm][wasm bytes].
+pub const OP_SIGNED_PUSH: u8 = 0x0A;
+pub const OP_SIGNED_SWAP: u8 = 0x0B;
+
+/// Upper bound on a frame payload. Drivers are 1–2 KB; the largest
+/// legitimate frames are manifests and signed modules. Anything bigger is a
+/// protocol error (or an attempted allocation attack) and is rejected
+/// before any buffer is sized from attacker-controlled input.
+pub const MAX_FRAME_LEN: usize = 512 * 1024;
 
 #[derive(Debug)]
 pub struct Frame {
@@ -83,6 +92,11 @@ pub fn read_frame(reader: &mut dyn std::io::Read) -> Result<Frame, LinkError> {
     read_exact(reader, &mut header)?;
     let opcode = header[0];
     let len = u32::from_be_bytes([header[1], header[2], header[3], header[4]]) as usize;
+    if len > MAX_FRAME_LEN {
+        return Err(LinkError::Io(alloc::format!(
+            "frame payload {len} exceeds MAX_FRAME_LEN {MAX_FRAME_LEN}"
+        )));
+    }
     let mut payload = vec![0u8; len];
     if len > 0 {
         read_exact(reader, &mut payload)?;

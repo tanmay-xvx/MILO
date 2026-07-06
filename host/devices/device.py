@@ -20,6 +20,8 @@ from core.transport import (
     OP_STATUS_RESPONSE,
     OP_SET_PARAM,
     OP_HOT_SWAP,
+    OP_SIGNED_PUSH,
+    OP_SIGNED_SWAP,
     OP_STREAM_DATA,
 )
 
@@ -106,6 +108,23 @@ class MiloDevice:
         for live control; on blocking receivers the result simply queues up.
         """
         self._transport.write_frame(OP_BYTECODE_PUSH, wasm_bytes)
+
+    def push_signed(self, signed_payload: bytes, timeout: float = 120.0) -> ExecResult:
+        """Push an Ed25519-signed module (signature||wasm) and wait for result.
+
+        Use `core.signing.sign_wasm(wasm, key)` to build the payload. Required
+        by receivers provisioned with MILO_REQUIRE_SIGNED=1.
+        """
+        self._transport.write_frame(OP_SIGNED_PUSH, signed_payload)
+        return self.wait_result(timeout=timeout)
+
+    def push_signed_async(self, signed_payload: bytes) -> None:
+        self._transport.write_frame(OP_SIGNED_PUSH, signed_payload)
+
+    def hot_swap_signed(self, signed_payload: bytes, timeout: float = 120.0) -> ExecResult:
+        """Hot-swap with an Ed25519-signed module and wait for result."""
+        self._transport.write_frame(OP_SIGNED_SWAP, signed_payload)
+        return self.wait_result(timeout=timeout)
 
     def wait_result(self, timeout: float = 120.0) -> ExecResult:
         """Wait for the next execution result (pending queue first)."""

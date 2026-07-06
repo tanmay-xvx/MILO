@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/site/assets/milo-identity.png" alt="MILO — a golden retriever drawn as a glowing network of nodes and signal arcs" width="720">
+</p>
+
 # MILO (Modular Interface for LLM-IoT Operations)
 
 > "Silicon as a Service for Agentic Systems"
@@ -331,9 +335,38 @@ The **ESP32-C3** (`riscv32imc`) has no native atomics; `wasmi` historically reli
 |---------|-----|----------|
 | v0.1.0-beta | `v0.1.0-beta` | ESP32-C3 merged firmware binary + manifest.json |
 
-## Development tracking
+## Agent control (MCP)
 
-- `docs/milo-guide.html` — Standalone project guide (architecture, syscalls, protocol)
+MILO ships a full Model Context Protocol server so any MCP client (Claude Code,
+Claude Desktop, Cursor) can drive device fleets — emulated or real — through
+natural-language tool calls: spawn devices, read manifests, push/hot-swap
+firmware, retask via parameters. The repo's root `.mcp.json` is auto-discovered
+by Claude Code; see [`host/mcp/README.md`](host/mcp/README.md).
+
+```bash
+cd host && python3 -m mcp.server      # stdio MCP server
+```
+
+## Security
+
+Nothing the LLM emits is trusted. Every code-loading opcode passes four gates —
+frame-size bound, optional Ed25519 signature, import whitelist, sandbox + fuel —
+and out-of-manifest peripheral access is denied and logged. Signed-only fleets:
+
+```bash
+python cli.py keygen                          # operator keypair
+export MILO_TRUSTED_KEY=<pub>  MILO_REQUIRE_SIGNED=1
+```
+
+Full threat model and enforcement map: [`SECURITY.md`](SECURITY.md).
+
+## Documentation
+
+- `docs/site/index.html` — Project showcase (evidence, MCP, trust model)
+- `docs/milo-guide.html` — Standalone technical guide (architecture, syscalls, protocol)
+- `docs/blog/evidence.md` — Flagship-scenario evidence pack (numbers, transcripts)
+- `SECURITY.md` — Threat model and the four gates
+- `docs/PORTING.md` — Board bring-up guide
 - `docs/review/2026-07-audit.md` — Full-project audit: findings, fixes, verification
 - `docs/week1/` — Core runtime, ESP32-C3, serial protocol
 - `docs/week2/` — Board-agnostic adapter, firmware delivery, E2E testing
