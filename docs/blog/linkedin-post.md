@@ -24,7 +24,7 @@ agent (Claude Code, Cursor...) can spawn devices, read their capabilities,
 push firmware, and retask fleets through typed tool calls. "Spin up three
 drones and hover them at two meters" is now a valid deployment plan.
 
-🔒 The unsexy part that makes it real: Ed25519-signed bytecode, a 12-syscall
+🔒 The unglamorous work that makes it real: Ed25519-signed bytecode, a 12-syscall
 import whitelist, fuel-metered 64 KB sandboxes, frame-size caps against
 allocation attacks, and CI that ships flashable images for ESP32-C3 and
 Raspberry Pi Pico on every commit. Nothing the model emits is trusted — and

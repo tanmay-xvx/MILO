@@ -103,7 +103,7 @@ absurd about watching one AI write firmware and a protocol hand it to the
 hardware while you drink tea, and I mean absurd in the way that eventually
 becomes normal.
 
-## The unsexy part, which is the actual point
+## The unglamorous part, which is the actual point
 
 Everything above is a demo until you answer the question every embedded
 engineer asks in the first thirty seconds: *you're letting a language model
@@ -130,7 +130,7 @@ pin the device never advertised, the attempt is *denied and logged* —
 failure is how you erode trust in a system like this. Loud failure is how the
 model learns, because the log goes right back into its context.
 
-The rest of industry-readiness is even less glamorous and I'll be brief: CI
+The rest of industry-readiness is quieter still, and I'll be brief: CI
 builds flashable images for both supported boards on every commit (ESP32-C3
 as a `.bin`, Raspberry Pi Pico as a `.uf2`), the test matrix runs the
 end-to-end signing and fleet tests on every push, and a compile cache brings
