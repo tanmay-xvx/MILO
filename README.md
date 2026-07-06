@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/site/assets/milo-identity.png" alt="MILO — a golden retriever drawn as a glowing network of nodes and signal arcs" width="720">
+</p>
+
 # MILO (Modular Interface for LLM-IoT Operations)
 
 > "Silicon as a Service for Agentic Systems"
